@@ -76,6 +76,12 @@
   button:active{transform:scale(.96)}
   .empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px;line-height:1.5;font-family:"Cormorant Garamond",Georgia,serif;font-size:22px;font-style:italic}
 
+  /* Editor als Overlay – keine Seitennavigation, damit die Wisch-Gesten von iOS nichts auslösen */
+  #adminPanel{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;flex-direction:column}
+  #adminPanel[hidden]{display:none}
+  .panelbar{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top) + 10px) 10px 8px 18px;color:var(--ink);font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-weight:600;font-size:20px}
+  .panelbar button{width:38px;height:38px;padding:0;border-radius:50%;font-size:18px;line-height:1}
+  #adminPanel iframe{flex:1;border:0;width:100%;background:var(--bg)}
   /* Wisch-Hinweis beim ersten Öffnen */
   .hint{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:5;background:rgba(74,36,54,.82);color:#fff;padding:10px 16px 10px 14px;border-radius:999px;font-size:14px;display:flex;align-items:center;gap:10px;box-shadow:0 10px 30px rgba(74,36,54,.3);backdrop-filter:blur(8px);opacity:0;transition:opacity .5s;pointer-events:none;white-space:nowrap}
   .hint.show{opacity:1}
@@ -119,6 +125,7 @@
 <canvas id="fx"></canvas>
 <div class="track" id="track"></div>
 <div class="hint" id="hint"><span class="hand">👈</span><span>Nach links wischen</span></div>
+<div id="adminPanel" hidden><div class="panelbar"><span>Fotos hinzufügen &amp; bearbeiten</span><button id="closeAdmin" aria-label="Schließen">✕</button></div></div>
 <footer>
   <div class="buttons" id="buttons">
     <button id="first">Anfang</button>
@@ -299,6 +306,21 @@ track.addEventListener('touchmove', e => {
 track.addEventListener('touchend', () => { lastTouch = null; }, {passive: true});
 track.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' && e.buttons) emit(e.clientX, e.clientY, e.movementX, e.movementY); });
 
+// Kamera-Knopf öffnet den Editor als Overlay (kein Seitenwechsel)
+const panel = document.getElementById('adminPanel');
+function openAdmin(){
+  const f = document.createElement('iframe'); f.id = 'adminFrame'; f.src = 'admin.html';
+  panel.appendChild(f); panel.hidden = false;
+}
+function closeAdmin(){
+  panel.hidden = true;
+  const f = document.getElementById('adminFrame'); if (f) f.remove();
+  load();
+}
+document.getElementById('adminLink').addEventListener('click', e => { e.preventDefault(); openAdmin(); });
+document.getElementById('closeAdmin').addEventListener('click', closeAdmin);
+window.addEventListener('message', e => { if (e.data === 'kochbuch-close') closeAdmin(); });
+
 function badgeFor(d){
   const t = new Date();
   if (d.getDate() !== t.getDate() || d.getMonth() !== t.getMonth()) return '';
@@ -308,12 +330,20 @@ function badgeFor(d){
   return `Heute vor ${y} Jahren`;
 }
 
+let lastJson = null, io = null;
 async function load(){
+  let txt = '';
   try{
     const r = await fetch('photos.json?v=' + Date.now(), {cache:'no-store'});
-    if (r.ok){ const j = await r.json(); photos = Array.isArray(j) ? j : (j.photos || []); }
+    if (r.ok) txt = await r.text();
   }catch(e){}
+  if (txt === lastJson) return;
+  lastJson = txt;
+  try{ const j = JSON.parse(txt || '{"photos":[]}'); photos = Array.isArray(j) ? j : (j.photos || []); }catch(e){ photos = []; }
   photos.sort((a,b) => String(a.date).localeCompare(String(b.date)));
+  if (io) io.disconnect();
+  track.innerHTML = ''; slides = [];
+  document.getElementById('buttons').style.display = '';
 
   document.getElementById('title').textContent = TITLE;
   document.getElementById('coverTitle').textContent = TITLE;
@@ -366,7 +396,7 @@ async function load(){
   slides = [...track.children];
   applyLayouts();
 
-  const io = new IntersectionObserver(entries => {
+  io = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (e.isIntersecting){
         e.target.classList.add('active');

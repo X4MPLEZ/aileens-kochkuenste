@@ -98,6 +98,12 @@ const setStatus = (m, ok) => { $('status').textContent = m; $('status').style.co
 const p2 = n => String(n).padStart(2, '0');
 const isoLocal = d => `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
 
+// Im Overlay der Slideshow: Link wird zum Schließen-Knopf
+if (window.parent !== window){
+  const back = document.querySelector('a[href="./"]');
+  if (back){ back.textContent = 'Schließen'; back.href = '#'; back.onclick = e => { e.preventDefault(); parent.postMessage('kochbuch-close', '*'); }; }
+}
+
 // ---------- Zugang ----------
 const host = location.hostname, segs = location.pathname.split('/').filter(Boolean);
 const onPages = host.endsWith('.github.io');
