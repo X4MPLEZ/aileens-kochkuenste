@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Admin – Bilder hochladen</title>
+<title>Admin – Bilder</title>
 <style>
   :root{--bg:#14110f;--card:#1f1a17;--text:#f4ede6;--muted:#b9aa9c;--accent:#e8a87c;}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:20px 16px 60px;max-width:560px;margin-inline:auto}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:20px 16px 80px;max-width:560px;margin-inline:auto}
   h1{font-size:22px;margin:0 0 6px}
   h2{font-size:17px;margin:0 0 10px}
   section{background:var(--card);border-radius:16px;padding:16px;margin-top:16px}
@@ -20,32 +20,41 @@
   button:disabled{opacity:.5}
   progress{width:100%;margin-top:12px;accent-color:var(--accent)}
   pre{white-space:pre-wrap;font-size:13px;color:var(--muted);margin:10px 0 0;max-height:220px;overflow:auto}
-  .muted{color:var(--muted);font-size:13px;line-height:1.45}
+  .muted{color:var(--muted);font-size:13px;line-height:1.45;margin:0}
+  .status{margin-top:10px;font-size:14px;line-height:1.4}
   a{color:var(--accent)}
-  .row{display:grid;grid-template-columns:72px 1fr;gap:12px;align-items:start;padding:12px 0;border-top:1px solid rgba(255,255,255,.08)}
-  .row img{width:72px;height:90px;object-fit:cover;border-radius:10px;background:#2a2420}
-  .row .del{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-top:8px}
+  .row{display:flex;gap:8px;align-items:center}
+  .row input{flex:1}
+  .edit{padding:16px 0;border-top:1px solid rgba(255,255,255,.08)}
+  .eframe{position:relative;width:min(100%,300px);aspect-ratio:4/5;border-radius:16px;overflow:hidden;background:#2a2420;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;margin:0 auto}
+  .eframe img{position:absolute;display:block;max-width:none;pointer-events:none}
+  .eframe::after{content:"";position:absolute;inset:0;border:1px solid rgba(255,255,255,.25);border-radius:16px;pointer-events:none}
+  .hint{text-align:center;color:var(--muted);font-size:12px;margin:6px 0 0}
+  .zoom{width:100%;margin-top:10px;accent-color:var(--accent)}
+  .del{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-top:8px}
+  .sticky{position:sticky;bottom:0;background:var(--bg);padding:10px 0 4px;margin-top:8px;display:none}
 </style>
 </head>
 <body>
-<h1>Bilder hochladen</h1>
+<h1>Bilder verwalten</h1>
 <p class="muted">Nur für dich. Diese Seite nicht weitergeben. <a href="./">Zur Slideshow</a></p>
 
 <section>
   <h2>Zugang</h2>
   <label>GitHub-Token (Fine-grained, Contents: Read &amp; write)</label>
   <input id="token" type="password" placeholder="github_pat_…" autocomplete="off">
-  <label>Owner</label>
-  <input id="owner" type="text" autocapitalize="off" autocorrect="off">
-  <label>Repo</label>
-  <input id="repo" type="text" autocapitalize="off" autocorrect="off">
-  <button id="save">Zugang speichern</button>
-  <p class="muted" id="status" style="margin-top:10px"></p>
+  <label>Owner / Repo</label>
+  <div class="row">
+    <input id="owner" type="text" autocapitalize="off" autocorrect="off" placeholder="owner">
+    <input id="repo" type="text" autocapitalize="off" autocorrect="off" placeholder="repo">
+  </div>
+  <button id="save">Speichern &amp; prüfen</button>
+  <div class="status" id="status"></div>
 </section>
 
 <section>
-  <h2>Neue Bilder</h2>
-  <p class="muted">Mehrere auswählen geht. Datum wird aus der Datei gelesen, Bilder werden verkleinert, dann ein einziger Commit. Doppelte werden übersprungen.</p>
+  <h2>Neue Bilder hochladen</h2>
+  <p class="muted">Mehrere auswählen geht. Datum kommt aus der Datei, Bilder werden verkleinert, am Ende ein einziger Commit. Doppelte werden übersprungen.</p>
   <input id="files" type="file" accept="image/*" multiple>
   <button id="upload">Hochladen</button>
   <progress id="prog" max="100" value="0"></progress>
@@ -53,28 +62,31 @@
 </section>
 
 <section>
-  <h2>Bildunterschriften &amp; Datum</h2>
-  <p class="muted">Neueste zuerst. Änderungen werden erst mit „Speichern" übernommen.</p>
-  <button id="loadList" class="secondary">Liste laden</button>
+  <h2>Bearbeiten</h2>
+  <p class="muted">Bild mit dem Finger im Rahmen verschieben, Regler zum Zoomen. Reihenfolge ergibt sich aus dem Datum. Erst mit „Alles speichern" wird es übernommen.</p>
+  <button id="loadList" class="secondary">Bilder laden</button>
   <div id="list"></div>
-  <button id="saveList" style="display:none">Speichern</button>
+  <div class="sticky" id="stickySave"><button id="saveList" style="width:100%;margin:0">Alles speichern</button></div>
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const log = m => { $('log').textContent += m + '\n'; $('log').scrollTop = 1e9; };
+const setStatus = (m, ok) => { $('status').textContent = m; $('status').style.color = ok ? '#9fd8a0' : (ok === false ? '#f0a3a3' : ''); };
 const p2 = n => String(n).padStart(2, '0');
 const isoLocal = d => `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
 
 // ---------- Zugang ----------
 const host = location.hostname, segs = location.pathname.split('/').filter(Boolean);
+const onPages = host.endsWith('.github.io');
 const saved = JSON.parse(localStorage.getItem('kochbuch_cfg') || '{}');
 $('token').value = saved.token || '';
-$('owner').value = saved.owner || (host.endsWith('.github.io') ? host.split('.')[0] : '');
-$('repo').value  = saved.repo  || (host.endsWith('.github.io') && segs.length && !segs[0].endsWith('.html') ? segs[0] : '');
+// Auf der Pages-Adresse gewinnt immer die Adresse (auch nach einer Umbenennung des Repos)
+$('owner').value = onPages ? host.split('.')[0] : (saved.owner || '');
+$('repo').value  = onPages && segs.length && !segs[0].endsWith('.html') ? segs[0] : (saved.repo || '');
 const cfg = () => ({token: $('token').value.trim(), owner: $('owner').value.trim(), repo: $('repo').value.trim()});
-$('save').onclick = () => { localStorage.setItem('kochbuch_cfg', JSON.stringify(cfg())); $('status').textContent = 'Gespeichert.'; };
+const repoPath = () => { const c = cfg(); return `/repos/${c.owner}/${c.repo}`; };
 
 async function api(method, path, body){
   const c = cfg();
@@ -83,10 +95,27 @@ async function api(method, path, body){
     headers: {Authorization: 'Bearer ' + c.token, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json'},
     body: body ? JSON.stringify(body) : undefined
   });
-  if (!r.ok) throw new Error(`${method} ${path} → ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  if (!r.ok){ const e = new Error(`${method} ${path} → ${r.status}: ${(await r.text()).slice(0, 200)}`); e.status = r.status; throw e; }
   return r.status === 204 ? null : r.json();
 }
-const repoPath = () => { const c = cfg(); return `/repos/${c.owner}/${c.repo}`; };
+
+$('save').onclick = async () => {
+  const c = cfg();
+  localStorage.setItem('kochbuch_cfg', JSON.stringify(c));
+  if (!c.token) return setStatus('Token fehlt.', false);
+  if (!c.owner || !c.repo) return setStatus('Owner und Repo fehlen.', false);
+  setStatus('Prüfe …');
+  try{
+    const r = await api('GET', repoPath());
+    await api('POST', `${repoPath()}/git/blobs`, {content: 'test', encoding: 'utf-8'});
+    setStatus(`✓ Zugriff auf ${r.full_name}: lesen und schreiben klappt.`, true);
+  }catch(e){
+    if (e.status === 401) setStatus('✗ Token ungültig (401). Neuen Token erzeugen und komplett kopieren.', false);
+    else if (e.status === 404) setStatus(`✗ Repo ${c.owner}/${c.repo} nicht gefunden, oder der Token hat kein Zugriffsrecht auf dieses Repo (404). Beim Token unter „Repository access" dieses Repo auswählen.`, false);
+    else if (e.status === 403) setStatus('✗ Token darf nicht schreiben (403). Beim Token: Permissions → Repository permissions → Contents: „Read and write".', false);
+    else setStatus('✗ ' + e.message, false);
+  }
+};
 
 async function getHead(){
   const info = await api('GET', repoPath());
@@ -114,7 +143,7 @@ async function commitTree(entries, message){
   const commit = await api('POST', `${repoPath()}/git/commits`, {message, tree: tree.sha, parents: headSha ? [headSha] : []});
   if (headSha) await api('PATCH', `${repoPath()}/git/refs/heads/${branch}`, {sha: commit.sha});
   else await api('POST', `${repoPath()}/git/refs`, {ref: `refs/heads/${branch}`, sha: commit.sha});
-  return commit.sha;
+  return {sha: commit.sha, branch};
 }
 const manifestEntry = m => ({path: 'photos.json', mode: '100644', type: 'blob', content: JSON.stringify(m, null, 1)});
 const sortManifest = m => m.photos.sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -165,7 +194,7 @@ $('upload').onclick = async () => {
   const files = [...$('files').files];
   if (!files.length) return log('Keine Bilder ausgewählt.');
   const c = cfg();
-  if (!c.token || !c.owner || !c.repo) return log('Erst Zugang ausfüllen und speichern.');
+  if (!c.token || !c.owner || !c.repo) return log('Erst oben den Zugang speichern.');
   $('upload').disabled = true;
   $('log').textContent = '';
   $('prog').value = 0;
@@ -175,6 +204,7 @@ $('upload').onclick = async () => {
     const known = new Set(manifest.photos.map(p => p.src).filter(Boolean));
     const entries = [];
     let done = 0, skipped = 0, failed = 0, i = 0;
+    log(`${files.length} Dateien, los …`);
 
     const worker = async () => {
       while (i < files.length){
@@ -187,7 +217,7 @@ $('upload').onclick = async () => {
           const blob = await api('POST', `${repoPath()}/git/blobs`, {content: b64, encoding: 'base64'});
           const path = `photos/${isoLocal(r.date).slice(0, 10)}_${Math.random().toString(36).slice(2, 8)}.jpg`;
           entries.push({path, mode: '100644', type: 'blob', sha: blob.sha});
-          manifest.photos.push({file: path, date: isoLocal(r.date), dateSource: r.dateSource, caption: '', w: r.w, h: r.h, src: key});
+          manifest.photos.push({file: path, date: isoLocal(r.date), dateSource: r.dateSource, caption: '', w: r.w, h: r.h, crop: {fx: .5, fy: .5, z: 1}, src: key});
           known.add(key);
           done++;
         }catch(e){ failed++; log(`✗ ${file.name}: ${e.message}`); }
@@ -201,37 +231,94 @@ $('upload').onclick = async () => {
     entries.push(manifestEntry(manifest));
     log('Commit wird erstellt …');
     await commitTree(entries, `${done} Bilder hochgeladen`);
-    log(`✓ Fertig: ${done} hochgeladen, ${skipped} übersprungen, ${failed} Fehler.\nDie Seite baut sich in ca. 1 Minute neu.`);
+    log(`✓ Fertig: ${done} hochgeladen, ${skipped} übersprungen, ${failed} Fehler.\nDie Slideshow baut sich in ca. 1 Minute neu. Zuschneiden geht unten unter „Bearbeiten" sofort.`);
     $('files').value = '';
   }catch(e){ log('Fehler: ' + e.message); }
   finally{ $('upload').disabled = false; }
 };
 
-// ---------- Bildunterschriften ----------
-let current = null;
+// ---------- Bearbeiten ----------
+let current = null, branchName = 'main';
+const deleted = new Set();
+
+function layout(p, W, H){
+  const w = p.w || 4, h = p.h || 5, c = p.crop || (p.crop = {fx: .5, fy: .5, z: 1});
+  const fx = c.fx ?? .5, fy = c.fy ?? .5, z = Math.max(1, c.z || 1);
+  const s = Math.max(W / w, H / h) * z;
+  const dw = w * s, dh = h * s;
+  let left = W / 2 - fx * dw, top = H / 2 - fy * dh;
+  left = Math.min(0, Math.max(W - dw, left));
+  top  = Math.min(0, Math.max(H - dh, top));
+  return {dw, dh, left, top};
+}
+function render(frame, p){
+  const img = frame.querySelector('img');
+  const L = layout(p, frame.clientWidth, frame.clientHeight);
+  img.style.width = L.dw + 'px'; img.style.height = L.dh + 'px';
+  img.style.left = L.left + 'px'; img.style.top = L.top + 'px';
+  return L;
+}
+function rawUrl(file){ const c = cfg(); return `https://raw.githubusercontent.com/${c.owner}/${c.repo}/${branchName}/${file}`; }
+
 $('loadList').onclick = async () => {
   const c = cfg();
-  if (!c.token || !c.owner || !c.repo) return alert('Erst Zugang ausfüllen und speichern.');
+  if (!c.token || !c.owner || !c.repo) return alert('Erst oben den Zugang speichern.');
   $('loadList').disabled = true;
   try{
     const {branch} = await getHead();
+    branchName = branch;
     current = await getManifest(branch);
+    deleted.clear();
     sortManifest(current).reverse();
     const list = $('list');
     list.innerHTML = '';
+    if (!current.photos.length){ list.innerHTML = '<p class="muted">Noch keine Bilder.</p>'; return; }
+
     current.photos.forEach((p, idx) => {
-      const row = document.createElement('div');
-      row.className = 'row';
-      row.innerHTML = `<img src="${p.file}?v=${Date.now()}" alt="">
-        <div>
-          <input type="datetime-local" data-k="date" data-i="${idx}" value="${String(p.date).slice(0, 16)}">
-          <input type="text" data-k="caption" data-i="${idx}" placeholder="Bildunterschrift …" value="${String(p.caption || '').replace(/"/g, '&quot;')}" style="margin-top:6px">
-          <label class="del"><input type="checkbox" data-k="del" data-i="${idx}"> Löschen</label>
-        </div>`;
-      list.appendChild(row);
+      p.crop = p.crop || {fx: .5, fy: .5, z: 1};
+      const box = document.createElement('div');
+      box.className = 'edit';
+      box.innerHTML = `
+        <div class="eframe"><img alt=""></div>
+        <p class="hint">verschieben: ziehen · zoomen: Regler</p>
+        <input type="range" class="zoom" min="1" max="3" step="0.01" value="${p.crop.z || 1}">
+        <input type="datetime-local" class="date" value="${String(p.date).slice(0, 16)}" style="margin-top:8px">
+        <input type="text" class="caption" placeholder="Bildunterschrift …" value="${String(p.caption || '').replace(/"/g, '&quot;')}" style="margin-top:6px">
+        <label class="del"><input type="checkbox" class="delbox"> Löschen</label>`;
+      list.appendChild(box);
+
+      const frame = box.querySelector('.eframe'), img = frame.querySelector('img');
+      img.onload = () => { if (!p.w || !p.h){ p.w = img.naturalWidth; p.h = img.naturalHeight; } render(frame, p); };
+      img.onerror = () => { if (!img.dataset.raw){ img.dataset.raw = '1'; img.src = rawUrl(p.file); } };
+      img.src = `${p.file}?v=${Date.now()}`;
+
+      // Verschieben per Finger / Maus
+      let drag = null;
+      frame.addEventListener('pointerdown', e => {
+        frame.setPointerCapture(e.pointerId);
+        const L = layout(p, frame.clientWidth, frame.clientHeight);
+        drag = {x: e.clientX, y: e.clientY, left: L.left, top: L.top, dw: L.dw, dh: L.dh};
+      });
+      frame.addEventListener('pointermove', e => {
+        if (!drag) return;
+        const W = frame.clientWidth, H = frame.clientHeight;
+        let left = drag.left + (e.clientX - drag.x), top = drag.top + (e.clientY - drag.y);
+        left = Math.min(0, Math.max(W - drag.dw, left));
+        top  = Math.min(0, Math.max(H - drag.dh, top));
+        p.crop.fx = (W / 2 - left) / drag.dw;
+        p.crop.fy = (H / 2 - top) / drag.dh;
+        render(frame, p);
+      });
+      const end = () => { drag = null; };
+      frame.addEventListener('pointerup', end);
+      frame.addEventListener('pointercancel', end);
+
+      box.querySelector('.zoom').addEventListener('input', e => { p.crop.z = +e.target.value; render(frame, p); });
+      box.querySelector('.date').addEventListener('change', e => { if (e.target.value) p.date = e.target.value.length === 16 ? e.target.value + ':00' : e.target.value; });
+      box.querySelector('.caption').addEventListener('input', e => { p.caption = e.target.value; });
+      box.querySelector('.delbox').addEventListener('change', e => { e.target.checked ? deleted.add(p) : deleted.delete(p); box.style.opacity = e.target.checked ? .4 : 1; });
     });
-    $('saveList').style.display = current.photos.length ? '' : 'none';
-    if (!current.photos.length) list.innerHTML = '<p class="muted">Noch keine Bilder.</p>';
+    $('stickySave').style.display = 'block';
   }catch(e){ alert('Fehler: ' + e.message); }
   finally{ $('loadList').disabled = false; }
 };
@@ -240,24 +327,19 @@ $('saveList').onclick = async () => {
   if (!current) return;
   $('saveList').disabled = true;
   try{
-    const photos = current.photos.map(p => ({...p}));
-    const deleted = [];
-    document.querySelectorAll('#list [data-k]').forEach(el => {
-      const p = photos[+el.dataset.i];
-      if (el.dataset.k === 'date' && el.value) p.date = el.value.length === 16 ? el.value + ':00' : el.value;
-      if (el.dataset.k === 'caption') p.caption = el.value.trim();
-      if (el.dataset.k === 'del' && el.checked) deleted.push(p);
+    const kept = current.photos.filter(p => !deleted.has(p)).map(p => {
+      const q = {...p, caption: (p.caption || '').trim(), crop: {fx: +(p.crop.fx ?? .5).toFixed(4), fy: +(p.crop.fy ?? .5).toFixed(4), z: +(p.crop.z || 1).toFixed(3)}};
+      return q;
     });
-    const kept = photos.filter(p => !deleted.includes(p));
     const manifest = {photos: kept};
     sortManifest(manifest);
-    const entries = deleted.map(p => ({path: p.file, mode: '100644', type: 'blob', sha: null}));
+    const entries = [...deleted].map(p => ({path: p.file, mode: '100644', type: 'blob', sha: null}));
     entries.push(manifestEntry(manifest));
-    await commitTree(entries, `Texte aktualisiert${deleted.length ? `, ${deleted.length} gelöscht` : ''}`);
-    alert('Gespeichert. Die Seite baut sich in ca. 1 Minute neu.');
-    current = null;
+    await commitTree(entries, `Bearbeitet${deleted.size ? `, ${deleted.size} gelöscht` : ''}`);
+    alert('Gespeichert. Die Slideshow baut sich in ca. 1 Minute neu.');
+    current = null; deleted.clear();
     $('list').innerHTML = '';
-    $('saveList').style.display = 'none';
+    $('stickySave').style.display = 'none';
   }catch(e){ alert('Fehler: ' + e.message); }
   finally{ $('saveList').disabled = false; }
 };

@@ -15,11 +15,14 @@
   header p{color:var(--muted);font-size:14px;margin-top:4px}
   .track{flex:1;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}
   .track::-webkit-scrollbar{display:none}
-  .slide{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 22px 10px;opacity:.4;transform:scale(.88);transition:transform .5s cubic-bezier(.2,.7,.2,1),opacity .5s}
+  .slide{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 22px 10px;opacity:.35;transform:scale(.86);transition:transform .55s cubic-bezier(.2,.7,.2,1),opacity .55s}
   .slide.active{opacity:1;transform:scale(1)}
-  .frame{width:min(100%,440px,50vh);aspect-ratio:4/5;border-radius:22px;overflow:hidden;background:var(--card);box-shadow:0 20px 50px rgba(0,0,0,.5)}
-  .frame img{width:100%;height:100%;object-fit:cover;display:block}
-  .meta{margin-top:16px;text-align:center;min-height:56px;max-width:440px}
+  .frame{position:relative;width:min(100%,440px,50vh);aspect-ratio:4/5;border-radius:22px;overflow:hidden;background:var(--card);box-shadow:0 20px 50px rgba(0,0,0,.5)}
+  .frame img{position:absolute;display:block;max-width:none;transform-origin:center;will-change:transform}
+  .slide.active .frame img{animation:kenburns 9s ease-in-out infinite alternate}
+  @keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.07)}}
+  .meta{margin-top:16px;text-align:center;min-height:56px;max-width:440px;opacity:0;transform:translateY(10px);transition:opacity .5s .15s,transform .5s .15s}
+  .slide.active .meta{opacity:1;transform:none}
   .date{font-size:15px;color:var(--accent);font-weight:600}
   .time{color:var(--muted);font-weight:400}
   .caption{margin-top:6px;font-size:17px;line-height:1.35}
@@ -31,6 +34,7 @@
   .empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px;line-height:1.5}
   .admin{color:var(--muted);font-size:13px;text-decoration:none;border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 14px;margin-top:4px}
   .admin[hidden]{display:none}
+  @media (prefers-reduced-motion:reduce){.slide.active .frame img{animation:none}}
 </style>
 </head>
 <body>
@@ -63,8 +67,33 @@ try{
   if (cfg.token || location.search.includes('admin')) document.getElementById('adminLink').hidden = false;
 }catch(e){}
 
+// Bild im Hochformat-Rahmen platzieren (gleiche Rechnung wie im Editor)
+function layout(p, W, H){
+  const w = p.w || 4, h = p.h || 5, c = p.crop || {};
+  const fx = c.fx ?? .5, fy = c.fy ?? .5, z = Math.max(1, c.z || 1);
+  const s = Math.max(W / w, H / h) * z;
+  const dw = w * s, dh = h * s;
+  let left = W / 2 - fx * dw, top = H / 2 - fy * dh;
+  left = Math.min(0, Math.max(W - dw, left));
+  top  = Math.min(0, Math.max(H - dh, top));
+  return {dw, dh, left, top};
+}
+
+let photos = [], slides = [];
+function applyLayouts(){
+  const f = document.querySelector('.frame');
+  if (!f) return;
+  const W = f.clientWidth, H = f.clientHeight;
+  slides.forEach((s, i) => {
+    const img = s.querySelector('img');
+    const L = layout(photos[i], W, H);
+    img.style.width = L.dw + 'px'; img.style.height = L.dh + 'px';
+    img.style.left = L.left + 'px'; img.style.top = L.top + 'px';
+  });
+}
+window.addEventListener('resize', applyLayouts);
+
 async function load(){
-  let photos = [];
   try{
     const r = await fetch('photos.json?v=' + Date.now(), {cache:'no-store'});
     if (r.ok){ const j = await r.json(); photos = Array.isArray(j) ? j : (j.photos || []); }
@@ -95,12 +124,15 @@ async function load(){
          <div class="date">${fmtDate.format(d)}${showTime ? ` <span class="time">· ${fmtTime.format(d)} Uhr</span>` : ''}</div>
          <div class="caption">${esc(p.caption || '')}</div>
        </div>`;
-    s.querySelector('img').src = p.file;
+    const img = s.querySelector('img');
+    img.onload = () => { if (!p.w || !p.h){ p.w = img.naturalWidth; p.h = img.naturalHeight; applyLayouts(); } };
+    img.src = p.file;
     frag.appendChild(s);
   });
   track.appendChild(frag);
+  slides = [...track.children];
+  applyLayouts();
 
-  const slides = [...track.children];
   const count = document.getElementById('count');
   const io = new IntersectionObserver(entries => {
     entries.forEach(e => {
