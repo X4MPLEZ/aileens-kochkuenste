@@ -382,7 +382,18 @@ function release(){
   }
   lastTouch = null; samples = [];
 }
-document.addEventListener('touchstart', e => { const t = e.touches[0]; if (t){ lastTouch = null; samples = []; trail(t.clientX, t.clientY); } }, {passive: true});
+// iOS liefert bei schnellen Flicks kaum Touch-Ereignisse (es übernimmt sofort das Scrollen),
+// deshalb entsteht die Spur zusätzlich aus der Scrollbewegung selbst – vom Finger aus in Wischrichtung.
+let dragStart = null, prevSL = 0;
+document.addEventListener('touchstart', e => { const t = e.touches[0]; if (t){ lastTouch = null; samples = []; dragStart = {x: t.clientX, y: t.clientY, sl: track.scrollLeft}; prevSL = track.scrollLeft; trail(t.clientX, t.clientY); } }, {passive: true});
+track.addEventListener('scroll', () => {
+  const sl = track.scrollLeft, d = sl - prevSL; prevSL = sl;
+  if (!dragStart || !panel.hidden || Math.abs(d) < .5) return;
+  const x = dragStart.x - (sl - dragStart.sl), y = dragStart.y;
+  if (x < -20 || x > innerWidth + 20){ dragStart = null; return; }
+  const n = Math.min(10, Math.max(2, Math.round(Math.abs(d) / 6)));
+  for (let i = 0; i < n; i++) emit(x + (Math.random() - .5) * 16, y + (Math.random() - .5) * 16, -d * .1 * (.4 + Math.random()), (Math.random() - .5) * 1.6);
+}, {passive: true});
 document.addEventListener('touchmove', e => { const t = e.touches[0]; if (t) trail(t.clientX, t.clientY); }, {passive: true});
 document.addEventListener('touchend', release, {passive: true});
 document.addEventListener('touchcancel', release, {passive: true});
@@ -496,8 +507,8 @@ async function load(){
   slides.forEach(s => io.observe(s));
   setTimeout(() => { ready = true; }, 800);
 
-  const go = (i, smooth = true) => slides[Math.max(0, Math.min(slides.length - 1, i))]
-    .scrollIntoView({behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest'});
+  const go = (i, smooth = true) => { dragStart = {x: innerWidth / 2, y: innerHeight / 2, sl: track.scrollLeft}; prevSL = track.scrollLeft; slides[Math.max(0, Math.min(slides.length - 1, i))]
+    .scrollIntoView({behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest'}); };
   const current = () => slides.findIndex(s => s.classList.contains('active'));
 
   document.getElementById('first').onclick  = () => { uiTick(); go(0); };
