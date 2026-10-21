@@ -29,6 +29,8 @@
   button{background:var(--card);color:var(--text);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:10px 18px;font:inherit;font-size:14px;cursor:pointer}
   button:active{transform:scale(.96)}
   .empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px;line-height:1.5}
+  .admin{color:var(--muted);font-size:13px;text-decoration:none;border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 14px;margin-top:4px}
+  .admin[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -36,11 +38,12 @@
 <div class="track" id="track"></div>
 <footer>
   <span class="count" id="count"></span>
-  <div class="buttons">
+  <div class="buttons" id="buttons">
     <button id="first">Anfang</button>
     <button id="random">Zufall</button>
     <button id="last">Neueste</button>
   </div>
+  <a class="admin" id="adminLink" href="admin.html" hidden>Bilder hochladen</a>
 </footer>
 <script>
 // ===== Hier anpassen =====
@@ -53,6 +56,12 @@ const fmtDate  = new Intl.DateTimeFormat('de-DE', {weekday:'long', day:'numeric'
 const fmtShort = new Intl.DateTimeFormat('de-DE', {day:'numeric', month:'long', year:'numeric'});
 const fmtTime  = new Intl.DateTimeFormat('de-DE', {hour:'2-digit', minute:'2-digit'});
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// Upload-Button nur auf dem Handy zeigen, auf dem der Admin-Zugang gespeichert ist (oder mit ?admin in der Adresse)
+try{
+  const cfg = JSON.parse(localStorage.getItem('kochbuch_cfg') || '{}');
+  if (cfg.token || location.search.includes('admin')) document.getElementById('adminLink').hidden = false;
+}catch(e){}
 
 async function load(){
   let photos = [];
@@ -69,7 +78,7 @@ async function load(){
   const track = document.getElementById('track');
   if (!photos.length){
     track.innerHTML = '<div class="empty">Noch keine Bilder.<br>Kommt bald.</div>';
-    document.querySelector('footer').style.visibility = 'hidden';
+    document.getElementById('buttons').style.display = 'none';
     return;
   }
 
