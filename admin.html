@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin – Bilder hochladen</title>
+<style>
+  :root{--bg:#14110f;--card:#1f1a17;--text:#f4ede6;--muted:#b9aa9c;--accent:#e8a87c;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:20px 16px 60px;max-width:560px;margin-inline:auto}
+  h1{font-size:22px;margin:0 0 6px}
+  h2{font-size:17px;margin:0 0 10px}
+  section{background:var(--card);border-radius:16px;padding:16px;margin-top:16px}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input[type=text],input[type=password],input[type=datetime-local]{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#2a2420;color:var(--text);font:inherit;font-size:15px}
+  input[type=file]{width:100%;margin-top:8px;color:var(--muted)}
+  button{background:var(--accent);color:#1a1310;border:0;border-radius:999px;padding:11px 18px;font:inherit;font-size:15px;font-weight:600;margin-top:12px;cursor:pointer}
+  button.secondary{background:#2a2420;color:var(--text);border:1px solid rgba(255,255,255,.12);font-weight:500}
+  button:disabled{opacity:.5}
+  progress{width:100%;margin-top:12px;accent-color:var(--accent)}
+  pre{white-space:pre-wrap;font-size:13px;color:var(--muted);margin:10px 0 0;max-height:220px;overflow:auto}
+  .muted{color:var(--muted);font-size:13px;line-height:1.45}
+  a{color:var(--accent)}
+  .row{display:grid;grid-template-columns:72px 1fr;gap:12px;align-items:start;padding:12px 0;border-top:1px solid rgba(255,255,255,.08)}
+  .row img{width:72px;height:90px;object-fit:cover;border-radius:10px;background:#2a2420}
+  .row .del{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<h1>Bilder hochladen</h1>
+<p class="muted">Nur für dich. Diese Seite nicht weitergeben.</p>
+
+<section>
+  <h2>Zugang</h2>
+  <label>GitHub-Token (Fine-grained, Contents: Read &amp; write)</label>
+  <input id="token" type="password" placeholder="github_pat_…" autocomplete="off">
+  <label>Owner</label>
+  <input id="owner" type="text" autocapitalize="off" autocorrect="off">
+  <label>Repo</label>
+  <input id="repo" type="text" autocapitalize="off" autocorrect="off">
+  <button id="save">Zugang speichern</button>
+  <p class="muted" id="status" style="margin-top:10px"></p>
+</section>
+
+<section>
+  <h2>Neue Bilder</h2>
+  <p class="muted">Mehrere auswählen geht. Datum wird aus der Datei gelesen, Bilder werden verkleinert, dann ein einziger Commit. Doppelte werden übersprungen.</p>
+  <input id="files" type="file" accept="image/*" multiple>
+  <button id="upload">Hochladen</button>
+  <progress id="prog" max="100" value="0"></progress>
+  <pre id="log"></pre>
+</section>
+
+<section>
+  <h2>Bildunterschriften &amp; Datum</h2>
+  <p class="muted">Neueste zuerst. Änderungen werden erst mit „Speichern" übernommen.</p>
+  <button id="loadList" class="secondary">Liste laden</button>
+  <div id="list"></div>
+  <button id="saveList" style="display:none">Speichern</button>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const log = m => { $('log').textContent += m + '\n'; $('log').scrollTop = 1e9; };
+const p2 = n => String(n).padStart(2, '0');
+const isoLocal = d => `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+
+// ---------- Zugang ----------
+const host = location.hostname, segs = location.pathname.split('/').filter(Boolean);
+const saved = JSON.parse(localStorage.getItem('kochbuch_cfg') || '{}');
+$('token').value = saved.token || '';
+$('owner').value = saved.owner || (host.endsWith('.github.io') ? host.split('.')[0] : '');
+$('repo').value  = saved.repo  || (host.endsWith('.github.io') && segs.length && !segs[0].endsWith('.html') ? segs[0] : '');
+const cfg = () => ({token: $('token').value.trim(), owner: $('owner').value.trim(), repo: $('repo').value.trim()});
+$('save').onclick = () => { localStorage.setItem('kochbuch_cfg', JSON.stringify(cfg())); $('status').textContent = 'Gespeichert.'; };
+
+async function api(method, path, body){
+  const c = cfg();
+  const r = await fetch('https://api.github.com' + path, {
+    method,
+    headers: {Authorization: 'Bearer ' + c.token, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json'},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!r.ok) throw new Error(`${method} ${path} → ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  return r.status === 204 ? null : r.json();
+}
+const repoPath = () => { const c = cfg(); return `/repos/${c.owner}/${c.repo}`; };
+
+async function getHead(){
+  const info = await api('GET', repoPath());
+  const branch = info.default_branch || 'main';
+  try{
+    const ref = await api('GET', `${repoPath()}/git/ref/heads/${branch}`);
+    const commit = await api('GET', `${repoPath()}/git/commits/${ref.object.sha}`);
+    return {branch, headSha: ref.object.sha, treeSha: commit.tree.sha};
+  }catch(e){ return {branch, headSha: null, treeSha: null}; }
+}
+
+async function getManifest(branch){
+  try{
+    const f = await api('GET', `${repoPath()}/contents/photos.json?ref=${branch}`);
+    const text = new TextDecoder().decode(Uint8Array.from(atob(f.content.replace(/\n/g, '')), c => c.charCodeAt(0)));
+    const j = JSON.parse(text);
+    return Array.isArray(j) ? {photos: j} : {photos: j.photos || []};
+  }catch(e){ return {photos: []}; }
+}
+
+// Ein Commit mit allen Änderungen (Git Data API) -> nur ein Pages-Build
+async function commitTree(entries, message){
+  const {branch, headSha, treeSha} = await getHead();
+  const tree = await api('POST', `${repoPath()}/git/trees`, {base_tree: treeSha || undefined, tree: entries});
+  const commit = await api('POST', `${repoPath()}/git/commits`, {message, tree: tree.sha, parents: headSha ? [headSha] : []});
+  if (headSha) await api('PATCH', `${repoPath()}/git/refs/heads/${branch}`, {sha: commit.sha});
+  else await api('POST', `${repoPath()}/git/refs`, {ref: `refs/heads/${branch}`, sha: commit.sha});
+  return commit.sha;
+}
+const manifestEntry = m => ({path: 'photos.json', mode: '100644', type: 'blob', content: JSON.stringify(m, null, 1)});
+const sortManifest = m => m.photos.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+// ---------- Bildverarbeitung ----------
+function loadImage(file){
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => res({img, url});
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Bild nicht lesbar')); };
+    img.src = url;
+  });
+}
+const blobToB64 = blob => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(fr.result.split(',')[1]);
+  fr.onerror = rej;
+  fr.readAsDataURL(blob);
+});
+
+async function processFile(file){
+  let date = null, dateSource = 'file';
+  try{
+    if (window.exifr){
+      const ex = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate']);
+      const d = ex && (ex.DateTimeOriginal || ex.CreateDate);
+      if (d instanceof Date && !isNaN(d)){ date = d; dateSource = 'exif'; }
+    }
+  }catch(e){}
+  if (!date) date = new Date(file.lastModified);
+
+  const {img, url} = await loadImage(file);
+  const MAX = 1400;
+  const sc = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * sc), h = Math.round(img.naturalHeight * sc);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  c.getContext('2d').drawImage(img, 0, 0, w, h);
+  URL.revokeObjectURL(url);
+  const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.82));
+  if (!blob) throw new Error('Konvertierung fehlgeschlagen');
+  return {date, dateSource, blob, w, h};
+}
+
+// ---------- Hochladen ----------
+$('upload').onclick = async () => {
+  const files = [...$('files').files];
+  if (!files.length) return log('Keine Bilder ausgewählt.');
+  const c = cfg();
+  if (!c.token || !c.owner || !c.repo) return log('Erst Zugang ausfüllen und speichern.');
+  $('upload').disabled = true;
+  $('log').textContent = '';
+  $('prog').value = 0;
+  try{
+    const {branch} = await getHead();
+    const manifest = await getManifest(branch);
+    const known = new Set(manifest.photos.map(p => p.src).filter(Boolean));
+    const entries = [];
+    let done = 0, skipped = 0, failed = 0, i = 0;
+
+    const worker = async () => {
+      while (i < files.length){
+        const file = files[i++];
+        const key = `${file.name}|${file.size}|${file.lastModified}`;
+        try{
+          if (known.has(key)){ skipped++; continue; }
+          const r = await processFile(file);
+          const b64 = await blobToB64(r.blob);
+          const blob = await api('POST', `${repoPath()}/git/blobs`, {content: b64, encoding: 'base64'});
+          const path = `photos/${isoLocal(r.date).slice(0, 10)}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+          entries.push({path, mode: '100644', type: 'blob', sha: blob.sha});
+          manifest.photos.push({file: path, date: isoLocal(r.date), dateSource: r.dateSource, caption: '', w: r.w, h: r.h, src: key});
+          known.add(key);
+          done++;
+        }catch(e){ failed++; log(`✗ ${file.name}: ${e.message}`); }
+        finally{ $('prog').value = Math.round(((done + skipped + failed) / files.length) * 100); }
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+
+    if (!entries.length){ log(`Nichts Neues (${skipped} schon vorhanden, ${failed} Fehler).`); return; }
+    sortManifest(manifest);
+    entries.push(manifestEntry(manifest));
+    log('Commit wird erstellt …');
+    await commitTree(entries, `${done} Bilder hochgeladen`);
+    log(`✓ Fertig: ${done} hochgeladen, ${skipped} übersprungen, ${failed} Fehler.\nDie Seite baut sich in ca. 1 Minute neu.`);
+    $('files').value = '';
+  }catch(e){ log('Fehler: ' + e.message); }
+  finally{ $('upload').disabled = false; }
+};
+
+// ---------- Bildunterschriften ----------
+let current = null;
+$('loadList').onclick = async () => {
+  const c = cfg();
+  if (!c.token || !c.owner || !c.repo) return alert('Erst Zugang ausfüllen und speichern.');
+  $('loadList').disabled = true;
+  try{
+    const {branch} = await getHead();
+    current = await getManifest(branch);
+    sortManifest(current).reverse();
+    const list = $('list');
+    list.innerHTML = '';
+    current.photos.forEach((p, idx) => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = `<img src="${p.file}?v=${Date.now()}" alt="">
+        <div>
+          <input type="datetime-local" data-k="date" data-i="${idx}" value="${String(p.date).slice(0, 16)}">
+          <input type="text" data-k="caption" data-i="${idx}" placeholder="Bildunterschrift …" value="${String(p.caption || '').replace(/"/g, '&quot;')}" style="margin-top:6px">
+          <label class="del"><input type="checkbox" data-k="del" data-i="${idx}"> Löschen</label>
+        </div>`;
+      list.appendChild(row);
+    });
+    $('saveList').style.display = current.photos.length ? '' : 'none';
+    if (!current.photos.length) list.innerHTML = '<p class="muted">Noch keine Bilder.</p>';
+  }catch(e){ alert('Fehler: ' + e.message); }
+  finally{ $('loadList').disabled = false; }
+};
+
+$('saveList').onclick = async () => {
+  if (!current) return;
+  $('saveList').disabled = true;
+  try{
+    const photos = current.photos.map(p => ({...p}));
+    const deleted = [];
+    document.querySelectorAll('#list [data-k]').forEach(el => {
+      const p = photos[+el.dataset.i];
+      if (el.dataset.k === 'date' && el.value) p.date = el.value.length === 16 ? el.value + ':00' : el.value;
+      if (el.dataset.k === 'caption') p.caption = el.value.trim();
+      if (el.dataset.k === 'del' && el.checked) deleted.push(p);
+    });
+    const kept = photos.filter(p => !deleted.includes(p));
+    const manifest = {photos: kept};
+    sortManifest(manifest);
+    const entries = deleted.map(p => ({path: p.file, mode: '100644', type: 'blob', sha: null}));
+    entries.push(manifestEntry(manifest));
+    await commitTree(entries, `Texte aktualisiert${deleted.length ? `, ${deleted.length} gelöscht` : ''}`);
+    alert('Gespeichert. Die Seite baut sich in ca. 1 Minute neu.');
+    current = null;
+    $('list').innerHTML = '';
+    $('saveList').style.display = 'none';
+  }catch(e){ alert('Fehler: ' + e.message); }
+  finally{ $('saveList').disabled = false; }
+};
+</script>
+</body>
+</html>
