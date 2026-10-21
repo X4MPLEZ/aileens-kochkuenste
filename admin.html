@@ -241,10 +241,11 @@ $('cam').addEventListener('change', async () => {
 });
 
 async function uploadFiles(files, out){
-  if (!files.length) return out('Keine Bilder ausgewählt.');
+  if (!files.length){ alert('Keine Bilder ausgewählt.'); return out('Keine Bilder ausgewählt.'); }
   const c = cfg();
-  if (!c.token || !c.owner || !c.repo) return out('Erst den Zugang speichern.');
+  if (!c.token || !c.owner || !c.repo){ alert('Erst unten den Zugangsschlüssel eintragen und speichern.'); return out('Erst den Zugang speichern.'); }
   $('upload').disabled = true;
+  $('upload').textContent = 'Lädt hoch …';
   if (out === log) $('log').textContent = '';
   $('prog').value = 0;
   try{
@@ -270,7 +271,7 @@ async function uploadFiles(files, out){
           known.add(key);
           done++;
         }catch(e){ failed++; out(`✗ ${file.name}: ${e.message}`); }
-        finally{ $('prog').value = Math.round(((done + skipped + failed) / files.length) * 100); }
+        finally{ $('prog').value = Math.round(((done + skipped + failed) / files.length) * 100); $('upload').textContent = `Lädt hoch … ${done + skipped + failed}/${files.length}`; }
       }
     };
     await Promise.all([worker(), worker(), worker()]);
@@ -282,8 +283,8 @@ async function uploadFiles(files, out){
     await commitTree(entries, `${done} Bilder hochgeladen`);
     out(`✓ Fertig: ${done} hochgeladen, ${skipped} übersprungen, ${failed} Fehler.\nDie Slideshow baut sich in ca. 1 Minute neu. Zuschneiden geht unten unter „Bearbeiten" sofort.`);
     $('files').value = '';
-  }catch(e){ out('Fehler: ' + e.message); }
-  finally{ $('upload').disabled = false; }
+  }catch(e){ out('Fehler: ' + e.message); alert('Fehler beim Hochladen:\n' + e.message); }
+  finally{ $('upload').disabled = false; $('upload').textContent = 'Hochladen'; }
 };
 
 // ---------- Bearbeiten ----------
