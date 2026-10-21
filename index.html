@@ -36,7 +36,8 @@
   .bokeh i:nth-child(5){width:90px;height:90px;left:12%;top:40%;background:#f7cbd9;animation-duration:28s;animation-delay:-20s}
   @keyframes drift{0%{transform:translate(0,0) scale(1)}33%{transform:translate(24px,-30px) scale(1.08)}66%{transform:translate(-18px,18px) scale(.95)}100%{transform:translate(0,0) scale(1)}}
 
-  header{position:relative;z-index:1;padding:calc(env(safe-area-inset-top) + 14px) 56px 6px;text-align:center}
+  header{position:relative;z-index:1;padding:calc(env(safe-area-inset-top) + 14px) 60px 6px;text-align:center}
+  .admin.sound{right:auto;left:16px;font-size:15px}
   .admin{position:absolute;right:16px;top:calc(env(safe-area-inset-top) + 14px);width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.7);border:1px solid var(--rose-soft);display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:17px;box-shadow:0 4px 14px rgba(120,50,80,.08)}
   header h1{font-family:"Cormorant Garamond",Georgia,serif;font-weight:600;font-style:italic;font-size:30px;line-height:1.05;letter-spacing:.3px;color:var(--ink)}
   header h1 .heart{color:var(--rose);font-style:normal;font-size:22px;vertical-align:4px;margin-left:4px;display:inline-block;animation:beat 2.2s ease-in-out infinite}
@@ -121,7 +122,7 @@
   </div>
 </div>
 
-<header><h1><span id="title"></span><span class="heart">♥</span></h1><p id="subtitle"></p><a class="admin" id="adminLink" href="admin.html" title="Foto hinzufügen">📷</a></header>
+<header><h1><span id="title"></span><span class="heart">♥</span></h1><p id="subtitle"></p><a class="admin" id="adminLink" href="admin.html" title="Foto hinzufügen">📷</a><button class="admin sound" id="soundBtn" type="button">🔊</button></header>
 <canvas id="fx"></canvas>
 <div class="track" id="track"></div>
 <div class="hint" id="hint"><span class="hand">👈</span><span>Nach links wischen</span></div>
@@ -162,6 +163,60 @@ if (!/iPhone|iPad|iPod/i.test(navigator.userAgent)){
   const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.json'; document.head.appendChild(l);
 }
 
+// ---------- Klänge: synthetisch, leise, kurz ----------
+let actx = null, master = null, noiseBuf = null;
+const soundOn = () => { try{ return localStorage.getItem('kochbuch_sound') !== '0'; }catch(e){ return true; } };
+function audioInit(){
+  if (actx) return;
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  actx = new AC(); master = actx.createGain(); master.gain.value = .7; master.connect(actx.destination);
+}
+function ensure(){ if (!soundOn()) return false; audioInit(); if (!actx) return false; if (actx.state === 'suspended') actx.resume(); return true; }
+function env(node, t0, a, d, peak){
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(Math.max(peak, .0002), t0 + a); g.gain.exponentialRampToValueAtTime(.0001, t0 + a + d);
+  node.connect(g); g.connect(master); return g;
+}
+function noise(){
+  if (!noiseBuf){ const n = actx.sampleRate; noiseBuf = actx.createBuffer(1, n, actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; }
+  const src = actx.createBufferSource(); src.buffer = noiseBuf; return src;
+}
+function tone(freq, t, a, d, peak, type = 'sine', detune = 0){
+  const o = actx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t); o.detune.value = detune;
+  env(o, t, a, d, peak); o.start(t); o.stop(t + a + d + .05);
+}
+function whoosh(dir = 1, strength = 1){
+  if (!ensure()) return;
+  const t = actx.currentTime, src = noise(), f = actx.createBiquadFilter();
+  f.type = 'bandpass'; f.Q.value = 1.1; f.frequency.setValueAtTime(420, t); f.frequency.exponentialRampToValueAtTime(1900, t + .18);
+  src.connect(f); let out = f;
+  if (actx.createStereoPanner){ const pn = actx.createStereoPanner(); pn.pan.setValueAtTime(-.55 * dir, t); pn.pan.linearRampToValueAtTime(.55 * dir, t + .22); f.connect(pn); out = pn; }
+  env(out, t, .025, .22, .07 * strength); src.start(t); src.stop(t + .35);
+}
+function snap(){
+  if (!ensure()) return;
+  const t = actx.currentTime, o = actx.createOscillator();
+  o.type = 'triangle'; o.frequency.setValueAtTime(600, t); o.frequency.exponentialRampToValueAtTime(390, t + .07);
+  env(o, t, .004, .1, .04); o.start(t); o.stop(t + .16);
+}
+function chime(){
+  if (!ensure()) return;
+  const t = actx.currentTime, f = [1046.5, 1318.5, 1568, 2093][Math.random() * 4 | 0];
+  tone(f, t, .008, .55, .045); tone(f * 2.01, t, .008, .3, .012); tone(f * 1.5, t + .03, .01, .4, .02);
+}
+function openSound(){
+  if (!ensure()) return;
+  const t = actx.currentTime;
+  [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { tone(f, t + i * .075, .02, .9, .04); tone(f * 2, t + i * .075, .02, .45, .01); });
+}
+function tick(){ if (!ensure()) return; tone(1300, actx.currentTime, .003, .045, .02); }
+
+// Ton-Schalter oben links
+const soundBtn = document.getElementById('soundBtn');
+const paintSound = () => { soundBtn.textContent = soundOn() ? '🔊' : '🔇'; soundBtn.title = soundOn() ? 'Ton aus' : 'Ton an'; };
+paintSound();
+soundBtn.addEventListener('click', () => { try{ localStorage.setItem('kochbuch_sound', soundOn() ? '0' : '1'); }catch(e){} paintSound(); if (soundOn()) chime(); });
+
 // Startbildschirm: aufsteigende Herzen, Tippen zum Starten
 const cover = document.getElementById('cover');
 for (let i = 0; i < 14; i++){
@@ -173,7 +228,7 @@ for (let i = 0; i < 14; i++){
   h.style.animationDelay = (-Math.random() * 14) + 's';
   cover.appendChild(h);
 }
-cover.addEventListener('click', () => { cover.classList.add('hide'); setTimeout(showHint, 600); });
+cover.addEventListener('click', () => { audioInit(); openSound(); cover.classList.add('hide'); setTimeout(showHint, 600); });
 
 // Gleiche Rechnung wie im Editor:
 // Hochkant-Fotos füllen den Rahmen (leicht beschnitten), breite Fotos werden komplett gezeigt – mit weichem Hintergrund.
@@ -248,6 +303,7 @@ track.addEventListener('pointerdown', e => { pd = {x: e.clientX, y: e.clientY}; 
 track.addEventListener('pointerup', e => {
   if (!pd || Math.hypot(e.clientX - pd.x, e.clientY - pd.y) > 8 || !e.target.closest('.frame')) { pd = null; return; }
   pd = null;
+  chime();
   for (let i = 0; i < 7; i++){
     const h = document.createElement('i');
     h.className = 'fh'; h.textContent = '♥';
@@ -297,30 +353,34 @@ function tick(){
   ctx.globalAlpha = 1;
   raf = parts.length ? requestAnimationFrame(tick) : null;
 }
-track.addEventListener('touchmove', e => {
-  const t = e.touches[0]; if (!t) return;
-  const vx = lastTouch ? t.clientX - lastTouch.x : 0, vy = lastTouch ? t.clientY - lastTouch.y : 0;
-  lastTouch = {x: t.clientX, y: t.clientY};
-  emit(t.clientX, t.clientY, vx, vy);
-}, {passive: true});
-track.addEventListener('touchend', () => { lastTouch = null; }, {passive: true});
-track.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' && e.buttons) emit(e.clientX, e.clientY, e.movementX, e.movementY); });
-
-// Kamera-Knopf öffnet den Editor als Overlay (kein Seitenwechsel)
-const panel = document.getElementById('adminPanel');
-function openAdmin(){
-  const f = document.createElement('iframe'); f.id = 'adminFrame'; f.src = 'admin.html';
-  panel.appendChild(f); panel.hidden = false;
+let samples = [];
+function trail(x, y){
+  if (!panel.hidden) return;
+  if (lastTouch){
+    const dx = x - lastTouch.x, dy = y - lastTouch.y, dist = Math.hypot(dx, dy);
+    const steps = Math.max(1, Math.min(12, Math.round(dist / 7)));
+    for (let i = 1; i <= steps; i++) emit(lastTouch.x + dx * i / steps, lastTouch.y + dy * i / steps, dx / steps, dy / steps);
+  } else emit(x, y, 0, 0);
+  lastTouch = {x, y};
+  samples.push({x, y, t: performance.now()}); if (samples.length > 4) samples.shift();
 }
-function closeAdmin(){
-  panel.hidden = true;
-  const f = document.getElementById('adminFrame'); if (f) f.remove();
-  load();
-  [45, 100, 170].forEach(sec => setTimeout(load, sec * 1000)); // neue Bilder nachladen, sobald die Seite neu gebaut ist
+function release(){
+  if (samples.length >= 2){
+    const a = samples[0], b = samples[samples.length - 1], dt = Math.max(1, b.t - a.t);
+    const vx = (b.x - a.x) / dt, vy = (b.y - a.y) / dt, speed = Math.hypot(vx, vy);   // px pro ms
+    if (speed > .35 && panel.hidden){
+      for (let i = 0; i < 16; i++) emit(b.x + Math.random() * 10, b.y + Math.random() * 10, vx * 18 * (1 + Math.random()), vy * 18 * (1 + Math.random()));
+      if (Math.abs(vx) > Math.abs(vy) && Math.abs(vx) > .4) whoosh(vx < 0 ? 1 : -1, Math.min(1.4, speed));
+    }
+  }
+  lastTouch = null; samples = [];
 }
-document.getElementById('adminLink').addEventListener('click', e => { e.preventDefault(); openAdmin(); });
-document.getElementById('closeAdmin').addEventListener('click', closeAdmin);
-window.addEventListener('message', e => { if (e.data === 'kochbuch-close') closeAdmin(); });
+document.addEventListener('touchstart', e => { const t = e.touches[0]; if (t){ lastTouch = null; samples = []; trail(t.clientX, t.clientY); } }, {passive: true});
+document.addEventListener('touchmove', e => { const t = e.touches[0]; if (t) trail(t.clientX, t.clientY); }, {passive: true});
+document.addEventListener('touchend', release, {passive: true});
+document.addEventListener('touchcancel', release, {passive: true});
+document.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' && e.buttons) trail(e.clientX, e.clientY); });
+document.addEventListener('pointerup', e => { if (e.pointerType === 'mouse') release(); });
 
 function badgeFor(d){
   const t = new Date();
@@ -331,7 +391,7 @@ function badgeFor(d){
   return `Heute vor ${y} Jahren`;
 }
 
-let lastJson = null, io = null;
+let lastJson = null, io = null, ready = false;
 async function load(){
   let txt = '';
   try{
@@ -343,6 +403,7 @@ async function load(){
   try{ const j = JSON.parse(txt || '{"photos":[]}'); photos = Array.isArray(j) ? j : (j.photos || []); }catch(e){ photos = []; }
   photos.sort((a,b) => String(a.date).localeCompare(String(b.date)));
   if (io) io.disconnect();
+  ready = false;
   track.innerHTML = ''; slides = [];
   document.getElementById('buttons').style.display = '';
 
@@ -400,6 +461,7 @@ async function load(){
   io = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (e.isIntersecting){
+        if (!e.target.classList.contains('active') && ready) snap();
         e.target.classList.add('active');
       } else {
         e.target.classList.remove('active');
@@ -407,14 +469,15 @@ async function load(){
     });
   }, {root: track, threshold: .6});
   slides.forEach(s => io.observe(s));
+  setTimeout(() => { ready = true; }, 800);
 
   const go = (i, smooth = true) => slides[Math.max(0, Math.min(slides.length - 1, i))]
     .scrollIntoView({behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest'});
   const current = () => slides.findIndex(s => s.classList.contains('active'));
 
-  document.getElementById('first').onclick  = () => go(0);
-  document.getElementById('last').onclick   = () => go(slides.length - 1);
-  document.getElementById('random').onclick = () => { let r; do { r = Math.floor(Math.random() * slides.length); } while (slides.length > 1 && r === current()); go(r); };
+  document.getElementById('first').onclick  = () => { tick(); go(0); };
+  document.getElementById('last').onclick   = () => { tick(); go(slides.length - 1); };
+  document.getElementById('random').onclick = () => { tick(); whoosh(1, .8); let r; do { r = Math.floor(Math.random() * slides.length); } while (slides.length > 1 && r === current()); go(r); };
   document.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight') go(current() + 1);
     if (e.key === 'ArrowLeft')  go(current() - 1);
