@@ -40,7 +40,12 @@
 <p class="muted">Nur für dich. Diese Seite nicht weitergeben. <a href="./">Zur Slideshow</a></p>
 
 <section>
-  <h2>Zugang</h2>
+  <h2>Ohne Token: direkt bei GitHub hochladen</h2>
+  <p class="muted">Fotos auf <a id="ghUpload" href="#">dieser GitHub-Seite</a> auswählen und unten „Commit changes" tippen. Datum, Verkleinern und Hochformat passieren danach automatisch, nach 2–3 Minuten sind die Bilder in der Slideshow. Den Token brauchst du nur für „Bearbeiten" weiter unten.</p>
+</section>
+
+<section>
+  <h2>Zugang (nur fürs Bearbeiten)</h2>
   <label>GitHub-Token (Fine-grained, Contents: Read &amp; write)</label>
   <input id="token" type="password" placeholder="github_pat_…" autocomplete="off">
   <label>Owner / Repo</label>
@@ -86,6 +91,7 @@ $('token').value = saved.token || '';
 $('owner').value = onPages ? host.split('.')[0] : (saved.owner || '');
 $('repo').value  = onPages && segs.length && !segs[0].endsWith('.html') ? segs[0] : (saved.repo || '');
 const cfg = () => ({token: $('token').value.trim(), owner: $('owner').value.trim(), repo: $('repo').value.trim()});
+{ const c = cfg(); if (c.owner && c.repo) $('ghUpload').href = `https://github.com/${c.owner}/${c.repo}/upload/main/photos`; }
 const repoPath = () => { const c = cfg(); return `/repos/${c.owner}/${c.repo}`; };
 
 async function api(method, path, body){

@@ -1,0 +1,44 @@
+name: Bilder verarbeiten
+
+on:
+  push:
+    branches: [main]
+    paths: ['photos/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: photos
+  cancel-in-progress: false
+
+jobs:
+  process:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install --quiet pillow pillow-heif
+
+      - run: python scripts/process_photos.py
+
+      - name: Ergebnis committen
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nichts zu tun."
+          else
+            git commit -m "Bilder verarbeitet"
+            git pull --rebase origin main
+            git push origin main
+          fi
