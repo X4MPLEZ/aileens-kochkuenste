@@ -2,10 +2,15 @@
 Datum aus EXIF (sonst Dateiname, sonst Upload-Zeitpunkt), Ausrichtung korrigieren,
 auf max. 1400 px verkleinern, als JPEG speichern, photos.json fortschreiben.
 Läuft automatisch per GitHub Action nach jedem Upload."""
+import base64
 import hashlib
+import io
 import json
+import os
 import re
 import subprocess
+import time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -132,6 +137,72 @@ for f in sorted(PHOTOS.iterdir()):
     changed += 1
     print(f"{f.name} -> {new_name} ({source}, {date:%d.%m.%Y %H:%M})")
 
+# ---------- Gericht erkennen (Claude API), nur wenn ein Schlüssel hinterlegt ist ----------
+API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+MODEL = os.environ.get("MODEL", "").strip() or "claude-haiku-5-5"
+MAX_AI = int(os.environ.get("MAX_AI_PER_RUN", "60") or 60)
+PROMPT = (
+    "Auf dem Foto ist ein selbst gekochtes Gericht. Antworte NUR mit JSON in genau dieser Form: "
+    '{"gericht": "<kurzer Name des Gerichts auf Deutsch, höchstens 4 Wörter>", '
+    '"beschreibung": "<ein warmer, kurzer Satz auf Deutsch mit höchstens 18 Wörtern, der beschreibt, was zu sehen ist; '
+    "ohne Übertreibung, ohne Ausrufezeichen; bei Unsicherheit vorsichtig formulieren, z. B. mit 'vermutlich'>\"}. "
+    'Wenn kein Essen zu sehen ist: {"gericht": "", "beschreibung": ""}.'
+)
+
+
+def describe(path):
+    img = Image.open(path).convert("RGB")
+    img.thumbnail((900, 900))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=80)
+    data = base64.b64encode(buf.getvalue()).decode()
+    body = {
+        "model": MODEL,
+        "max_tokens": 200,
+        "messages": [{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}},
+            {"type": "text", "text": PROMPT},
+        ]}],
+    }
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=90) as r:
+        res = json.load(r)
+    text = "".join(b.get("text", "") for b in res.get("content", []) if b.get("type") == "text")
+    m = re.search(r"\{.*\}", text, re.S)
+    j = json.loads(m.group(0)) if m else {}
+    return str(j.get("gericht", "")).strip(" .\n"), str(j.get("beschreibung", "")).strip()
+
+
+recognized = 0
+if API_KEY:
+    errors = 0
+    for p in photos:
+        if p.get("ai") or recognized >= MAX_AI or errors >= 3:
+            continue
+        try:
+            dish, desc = describe(Path(p["file"]))
+        except Exception as e:
+            errors += 1
+            print(f"KI-Fehler bei {p['file']}: {e}")
+            continue
+        if dish:
+            p["dish"] = dish
+            if not p.get("caption"):
+                p["caption"] = dish
+        if desc and not p.get("desc"):
+            p["desc"] = desc
+        p["ai"] = True
+        recognized += 1
+        changed += 1
+        print(f"Erkannt: {p['file']} -> {dish} | {desc}")
+        time.sleep(0.4)
+else:
+    print("Kein ANTHROPIC_API_KEY hinterlegt – Gerichte werden nicht erkannt.")
+
 photos.sort(key=lambda p: p["date"])
 MANIFEST.write_text(json.dumps({"photos": photos}, ensure_ascii=False, indent=1), encoding="utf-8")
-print(f"{changed} Änderungen, {len(photos)} Bilder insgesamt.")
+print(f"{changed} Änderungen, {recognized} Gerichte erkannt, {len(photos)} Bilder insgesamt.")

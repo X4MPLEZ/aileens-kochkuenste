@@ -336,7 +336,8 @@ $('loadList').onclick = async () => {
         <p class="hint">verschieben: ziehen · zoomen: Regler</p>
         <input type="range" class="zoom" min="1" max="3" step="0.01" value="${p.crop.z || 1}">
         <input type="datetime-local" class="date" value="${String(p.date).slice(0, 16)}" style="margin-top:8px">
-        <input type="text" class="caption" placeholder="Bildunterschrift …" value="${String(p.caption || '').replace(/"/g, '&quot;')}" style="margin-top:6px">
+        <input type="text" class="caption" placeholder="Gericht / Überschrift …" value="${String(p.caption || p.dish || '').replace(/"/g, '&quot;')}" style="margin-top:6px">
+        <input type="text" class="desc" placeholder="Kurze Beschreibung …" value="${String(p.desc || '').replace(/"/g, '&quot;')}" style="margin-top:6px">
         <label class="del"><input type="checkbox" class="delbox"> Löschen</label>`;
       list.appendChild(box);
 
@@ -369,6 +370,7 @@ $('loadList').onclick = async () => {
       box.querySelector('.zoom').addEventListener('input', e => { p.crop.z = +e.target.value; render(frame, p); });
       box.querySelector('.date').addEventListener('change', e => { if (e.target.value) p.date = e.target.value.length === 16 ? e.target.value + ':00' : e.target.value; });
       box.querySelector('.caption').addEventListener('input', e => { p.caption = e.target.value; });
+      box.querySelector('.desc').addEventListener('input', e => { p.desc = e.target.value; });
       box.querySelector('.delbox').addEventListener('change', e => { e.target.checked ? deleted.add(p) : deleted.delete(p); box.style.opacity = e.target.checked ? .4 : 1; });
     });
     $('stickySave').style.display = 'block';
@@ -381,7 +383,7 @@ $('saveList').onclick = async () => {
   $('saveList').disabled = true;
   try{
     const kept = current.photos.filter(p => !deleted.has(p)).map(p => {
-      const q = {...p, caption: (p.caption || '').trim(), crop: {fx: +(p.crop.fx ?? .5).toFixed(4), fy: +(p.crop.fy ?? .5).toFixed(4), z: +(p.crop.z || 1).toFixed(3)}};
+      const q = {...p, caption: (p.caption || '').trim(), desc: (p.desc || '').trim(), crop: {fx: +(p.crop.fx ?? .5).toFixed(4), fy: +(p.crop.fy ?? .5).toFixed(4), z: +(p.crop.z || 1).toFixed(3)}};
       return q;
     });
     const manifest = {photos: kept};
