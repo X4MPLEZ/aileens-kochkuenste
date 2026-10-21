@@ -316,6 +316,7 @@ function closeAdmin(){
   panel.hidden = true;
   const f = document.getElementById('adminFrame'); if (f) f.remove();
   load();
+  [45, 100, 170].forEach(sec => setTimeout(load, sec * 1000)); // neue Bilder nachladen, sobald die Seite neu gebaut ist
 }
 document.getElementById('adminLink').addEventListener('click', e => { e.preventDefault(); openAdmin(); });
 document.getElementById('closeAdmin').addEventListener('click', closeAdmin);
