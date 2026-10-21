@@ -1,3 +1,18 @@
 {
- "photos": []
+ "photos": [
+  {
+   "file": "photos/2025-12-23_ls61sv.jpg",
+   "date": "2025-12-23T14:38:48",
+   "dateSource": "exif",
+   "caption": "",
+   "w": 788,
+   "h": 1400,
+   "crop": {
+    "fx": 0.5,
+    "fy": 0.5,
+    "z": 1
+   },
+   "src": "IMG_5996.jpeg|2967563|1766497128000"
+  }
+ ]
 }
