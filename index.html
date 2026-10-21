@@ -185,23 +185,26 @@ function tone(freq, t, a, d, peak, type = 'sine', detune = 0){
   const o = actx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t); o.detune.value = detune;
   env(o, t, a, d, peak); o.start(t); o.stop(t + a + d + .05);
 }
+let curWhoosh = null;
 function whoosh(dir = 1, strength = 1){
   if (!ensure()) return;
-  const t = actx.currentTime, dur = .85;
-  // Breitbandrauschen, tief gefiltert, das langsam anschwillt, sich kurz öffnet und wieder verweht
+  const t = actx.currentTime, dur = .7;
+  // laufenden Windstoß weich ablösen, damit schnelle Wischfolgen nicht matschen
+  if (curWhoosh){ try{ curWhoosh.gain.cancelScheduledValues(t); curWhoosh.gain.setValueAtTime(Math.max(curWhoosh.gain.value, .0001), t); curWhoosh.gain.exponentialRampToValueAtTime(.0001, t + .09); }catch(e){} }
   const src = noise(), lp = actx.createBiquadFilter(), hp = actx.createBiquadFilter();
   lp.type = 'lowpass'; lp.Q.value = .6;
-  lp.frequency.setValueAtTime(220, t); lp.frequency.exponentialRampToValueAtTime(1400, t + .28); lp.frequency.exponentialRampToValueAtTime(260, t + dur);
+  lp.frequency.setValueAtTime(220, t); lp.frequency.exponentialRampToValueAtTime(1400, t + .22); lp.frequency.exponentialRampToValueAtTime(260, t + dur);
   hp.type = 'highpass'; hp.frequency.value = 120;
   src.connect(hp); hp.connect(lp); let out = lp;
   if (actx.createStereoPanner){ const pn = actx.createStereoPanner(); pn.pan.setValueAtTime(-.6 * dir, t); pn.pan.linearRampToValueAtTime(.6 * dir, t + dur * .8); lp.connect(pn); out = pn; }
   const g = actx.createGain();
   g.gain.setValueAtTime(.0001, t);
-  g.gain.exponentialRampToValueAtTime(.022 * strength, t + .16);
-  g.gain.setValueAtTime(.022 * strength, t + .3);
+  g.gain.exponentialRampToValueAtTime(.012 * strength, t + .12);
+  g.gain.setValueAtTime(.012 * strength, t + .24);
   g.gain.exponentialRampToValueAtTime(.0001, t + dur);
   out.connect(g); g.connect(master);
   src.start(t); src.stop(t + dur + .05);
+  curWhoosh = g;
 }
 function snap(){}
 function chime(){
@@ -375,7 +378,6 @@ function release(){
     const vx = (b.x - a.x) / dt, vy = (b.y - a.y) / dt, speed = Math.hypot(vx, vy);   // px pro ms
     if (speed > .35 && panel.hidden){
       for (let i = 0; i < 16; i++) emit(b.x + Math.random() * 10, b.y + Math.random() * 10, vx * 18 * (1 + Math.random()), vy * 18 * (1 + Math.random()));
-      if (Math.abs(vx) > Math.abs(vy) && Math.abs(vx) > .4) whoosh(vx < 0 ? 1 : -1, Math.min(1.4, speed));
     }
   }
   lastTouch = null; samples = [];
@@ -412,7 +414,7 @@ function badgeFor(d){
   return `Heute vor ${y} Jahren`;
 }
 
-let lastJson = null, io = null, ready = false;
+let lastJson = null, io = null, ready = false, lastActive = null;
 async function load(){
   let txt = '';
   try{
@@ -424,7 +426,7 @@ async function load(){
   try{ const j = JSON.parse(txt || '{"photos":[]}'); photos = Array.isArray(j) ? j : (j.photos || []); }catch(e){ photos = []; }
   photos.sort((a,b) => String(a.date).localeCompare(String(b.date)));
   if (io) io.disconnect();
-  ready = false;
+  ready = false; lastActive = null;
   track.innerHTML = ''; slides = [];
   document.getElementById('buttons').style.display = '';
 
@@ -482,7 +484,9 @@ async function load(){
   io = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (e.isIntersecting){
-        if (!e.target.classList.contains('active') && ready) snap();
+        const idx = +e.target.dataset.i;
+        if (ready && lastActive !== null && idx !== lastActive) whoosh(idx > lastActive ? 1 : -1, 1);
+        lastActive = idx;
         e.target.classList.add('active');
       } else {
         e.target.classList.remove('active');
@@ -498,7 +502,7 @@ async function load(){
 
   document.getElementById('first').onclick  = () => { uiTick(); go(0); };
   document.getElementById('last').onclick   = () => { uiTick(); go(slides.length - 1); };
-  document.getElementById('random').onclick = () => { uiTick(); whoosh(1, .8); let r; do { r = Math.floor(Math.random() * slides.length); } while (slides.length > 1 && r === current()); go(r); };
+  document.getElementById('random').onclick = () => { uiTick(); let r; do { r = Math.floor(Math.random() * slides.length); } while (slides.length > 1 && r === current()); go(r); };
   document.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight') go(current() + 1);
     if (e.key === 'ArrowLeft')  go(current() - 1);
