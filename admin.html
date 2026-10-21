@@ -33,11 +33,21 @@
   .zoom{width:100%;margin-top:10px;accent-color:var(--accent)}
   .del{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-top:8px}
   .sticky{position:sticky;bottom:0;background:var(--bg);padding:10px 0 4px;margin-top:8px;display:none}
+  .camera{display:block;text-align:center;background:var(--accent);color:#1a1310;border-radius:16px;padding:18px;font-size:18px;font-weight:600;margin-top:12px;cursor:pointer}
+  .camera:active{transform:scale(.98)}
 </style>
 </head>
 <body>
 <h1>Bilder verwalten</h1>
 <p class="muted">Nur für dich. Diese Seite nicht weitergeben. <a href="./">Zur Slideshow</a></p>
+
+<section>
+  <h2>Foto aufnehmen</h2>
+  <p class="muted">Öffnet die Kamera, das Foto wird sofort hochgeladen. Braucht den gespeicherten Token (unten).</p>
+  <label class="camera" for="cam">📷 Foto aufnehmen</label>
+  <input id="cam" type="file" accept="image/*" capture="environment" hidden>
+  <pre id="camlog"></pre>
+</section>
 
 <section>
   <h2>Ohne Token: direkt bei GitHub hochladen</h2>
@@ -196,13 +206,29 @@ async function processFile(file){
 }
 
 // ---------- Hochladen ----------
-$('upload').onclick = async () => {
-  const files = [...$('files').files];
-  if (!files.length) return log('Keine Bilder ausgewählt.');
+$('upload').onclick = () => uploadFiles([...$('files').files], log);
+
+// Kamera: Foto wird sofort hochgeladen
+$('cam').addEventListener('change', async () => {
+  const files = [...$('cam').files];
+  if (!files.length) return;
+  const camlog = m => { $('camlog').textContent += m + '\n'; };
+  $('camlog').textContent = '';
   const c = cfg();
-  if (!c.token || !c.owner || !c.repo) return log('Erst oben den Zugang speichern.');
+  if (!c.token){
+    camlog('Kein Token gespeichert. Entweder unten den Zugang einrichten oder das Foto über die GitHub-Seite hochladen.');
+    return;
+  }
+  await uploadFiles(files, camlog);
+  $('cam').value = '';
+});
+
+async function uploadFiles(files, out){
+  if (!files.length) return out('Keine Bilder ausgewählt.');
+  const c = cfg();
+  if (!c.token || !c.owner || !c.repo) return out('Erst den Zugang speichern.');
   $('upload').disabled = true;
-  $('log').textContent = '';
+  if (out === log) $('log').textContent = '';
   $('prog').value = 0;
   try{
     const {branch} = await getHead();
@@ -210,7 +236,7 @@ $('upload').onclick = async () => {
     const known = new Set(manifest.photos.map(p => p.src).filter(Boolean));
     const entries = [];
     let done = 0, skipped = 0, failed = 0, i = 0;
-    log(`${files.length} Dateien, los …`);
+    out(`${files.length} Dateien, los …`);
 
     const worker = async () => {
       while (i < files.length){
@@ -226,20 +252,20 @@ $('upload').onclick = async () => {
           manifest.photos.push({file: path, date: isoLocal(r.date), dateSource: r.dateSource, caption: '', w: r.w, h: r.h, crop: {fx: .5, fy: .5, z: 1}, src: key});
           known.add(key);
           done++;
-        }catch(e){ failed++; log(`✗ ${file.name}: ${e.message}`); }
+        }catch(e){ failed++; out(`✗ ${file.name}: ${e.message}`); }
         finally{ $('prog').value = Math.round(((done + skipped + failed) / files.length) * 100); }
       }
     };
     await Promise.all([worker(), worker(), worker()]);
 
-    if (!entries.length){ log(`Nichts Neues (${skipped} schon vorhanden, ${failed} Fehler).`); return; }
+    if (!entries.length){ out(`Nichts Neues (${skipped} schon vorhanden, ${failed} Fehler).`); return; }
     sortManifest(manifest);
     entries.push(manifestEntry(manifest));
-    log('Commit wird erstellt …');
+    out('Commit wird erstellt …');
     await commitTree(entries, `${done} Bilder hochgeladen`);
-    log(`✓ Fertig: ${done} hochgeladen, ${skipped} übersprungen, ${failed} Fehler.\nDie Slideshow baut sich in ca. 1 Minute neu. Zuschneiden geht unten unter „Bearbeiten" sofort.`);
+    out(`✓ Fertig: ${done} hochgeladen, ${skipped} übersprungen, ${failed} Fehler.\nDie Slideshow baut sich in ca. 1 Minute neu. Zuschneiden geht unten unter „Bearbeiten" sofort.`);
     $('files').value = '';
-  }catch(e){ log('Fehler: ' + e.message); }
+  }catch(e){ out('Fehler: ' + e.message); }
   finally{ $('upload').disabled = false; }
 };
 

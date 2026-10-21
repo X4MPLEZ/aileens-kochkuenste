@@ -47,7 +47,7 @@
     <button id="random">Zufall</button>
     <button id="last">Neueste</button>
   </div>
-  <a class="admin" id="adminLink" href="admin.html" hidden>Bilder hochladen</a>
+  <a class="admin" id="adminLink" href="admin.html" hidden>📷 Foto hochladen</a>
 </footer>
 <script>
 // ===== Hier anpassen =====
@@ -61,10 +61,19 @@ const fmtShort = new Intl.DateTimeFormat('de-DE', {day:'numeric', month:'long', 
 const fmtTime  = new Intl.DateTimeFormat('de-DE', {hour:'2-digit', minute:'2-digit'});
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-// Upload-Button nur auf dem Handy zeigen, auf dem der Admin-Zugang gespeichert ist (oder mit ?admin in der Adresse)
+// Upload-Knopf nur auf deinem Handy: einmal die Seite mit ?admin öffnen, dann bleibt er dort.
+// Mit gespeichertem Token geht er auf die eigene Upload-Seite (Kamera), ohne Token auf GitHubs Upload-Seite.
 try{
+  if (location.search.includes('admin')) localStorage.setItem('kochbuch_admin', '1');
   const cfg = JSON.parse(localStorage.getItem('kochbuch_cfg') || '{}');
-  if (cfg.token || location.search.includes('admin')) document.getElementById('adminLink').hidden = false;
+  const link = document.getElementById('adminLink');
+  if (cfg.token || localStorage.getItem('kochbuch_admin')){
+    link.hidden = false;
+    if (!cfg.token){
+      const owner = location.hostname.split('.')[0], repo = location.pathname.split('/').filter(Boolean)[0];
+      if (location.hostname.endsWith('.github.io') && repo) link.href = `https://github.com/${owner}/${repo}/upload/main/photos`;
+    }
+  }
 }catch(e){}
 
 // Bild im Hochformat-Rahmen platzieren (gleiche Rechnung wie im Editor)
