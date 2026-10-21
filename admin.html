@@ -338,6 +338,7 @@ $('loadList').onclick = async () => {
         <input type="datetime-local" class="date" value="${String(p.date).slice(0, 16)}" style="margin-top:8px">
         <input type="text" class="caption" placeholder="Gericht / Überschrift …" value="${String(p.caption || p.dish || '').replace(/"/g, '&quot;')}" style="margin-top:6px">
         <input type="text" class="desc" placeholder="Kurze Beschreibung …" value="${String(p.desc || '').replace(/"/g, '&quot;')}" style="margin-top:6px">
+        <label class="del"><input type="checkbox" class="favbox" ${p.favorite ? 'checked' : ''}> ★ Lieblingsgericht</label>
         <label class="del"><input type="checkbox" class="delbox"> Löschen</label>`;
       list.appendChild(box);
 
@@ -371,6 +372,7 @@ $('loadList').onclick = async () => {
       box.querySelector('.date').addEventListener('change', e => { if (e.target.value) p.date = e.target.value.length === 16 ? e.target.value + ':00' : e.target.value; });
       box.querySelector('.caption').addEventListener('input', e => { p.caption = e.target.value; });
       box.querySelector('.desc').addEventListener('input', e => { p.desc = e.target.value; });
+      box.querySelector('.favbox').addEventListener('change', e => { p.favorite = e.target.checked; });
       box.querySelector('.delbox').addEventListener('change', e => { e.target.checked ? deleted.add(p) : deleted.delete(p); box.style.opacity = e.target.checked ? .4 : 1; });
     });
     $('stickySave').style.display = 'block';

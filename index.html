@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#fbeef1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Aileens Kochkünste">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
 <title>Aileens Kochkünste</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -51,6 +57,8 @@
   .bar{position:absolute;top:10px;left:14px;right:14px;height:3px;background:rgba(255,255,255,.4);border-radius:3px;z-index:3}
   .bar i{display:block;height:100%;width:var(--p,0%);background:#fff;border-radius:3px;box-shadow:0 0 6px rgba(255,255,255,.8)}
   .badge{position:absolute;top:22px;left:14px;z-index:3;background:rgba(255,255,255,.85);color:var(--rose);font-size:11px;letter-spacing:1.2px;text-transform:uppercase;font-weight:600;padding:5px 10px;border-radius:999px;backdrop-filter:blur(6px)}
+  .fav{position:absolute;top:22px;left:14px;z-index:3;background:linear-gradient(135deg,#f3d27a,#d9a66b 60%,#c98f52);color:#fff;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;font-weight:700;padding:6px 11px;border-radius:999px;box-shadow:0 6px 16px rgba(201,143,82,.4);text-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .fav + .badge{top:54px}
   .meta{position:absolute;left:0;right:0;bottom:0;padding:80px 20px 20px;background:linear-gradient(to top,rgba(50,15,30,.74),rgba(50,15,30,0));color:#fff;z-index:3;opacity:0;transform:translateY(12px);transition:opacity .6s .2s,transform .6s .2s}
   .slide.active .meta{opacity:1;transform:none}
   .date{font-size:12px;letter-spacing:1.6px;text-transform:uppercase;color:#ffd8e2;font-weight:600}
@@ -125,6 +133,7 @@ const TITLE = 'Aileens Kochkünste';
 const subtitleText = (n, first) => n ? `${n} Gerichte seit dem ${first}` : 'Noch keine Bilder';
 const coverText = n => n ? `${n} Mal hast du für mich gekocht.` : 'Hier entsteht etwas.';
 const THANKS = 'Danke';   // großes Wort auf dem Startbildschirm
+const FAVORITE_LABEL = 'Markus Lieblingsgericht';   // Band auf den markierten Fotos
 const START_AT = 'first';      // 'first' = von Anfang an, 'last' = neuestes zuerst
 const FRAME_RATIO = 9 / 16;    // Breite / Höhe des Rahmens (Handy-Hochformat)
 // =========================
@@ -135,6 +144,16 @@ const fmtTime  = new Intl.DateTimeFormat('de-DE', {hour:'2-digit', minute:'2-dig
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const track = document.getElementById('track');
 let photos = [], slides = [];
+
+// Zugangsschlüssel aus der Adresse (…/#key=…) übernehmen – so hat auch die Home-Bildschirm-App ihn
+try{
+  const m = location.hash.match(/key=([^&]+)/);
+  if (m){ const c = JSON.parse(localStorage.getItem('kochbuch_cfg') || '{}'); c.token = decodeURIComponent(m[1]); localStorage.setItem('kochbuch_cfg', JSON.stringify(c)); }
+}catch(e){}
+// App-Manifest nur für Android/Desktop; iOS nimmt die Meta-Tags und die aktuelle Adresse
+if (!/iPhone|iPad|iPod/i.test(navigator.userAgent)){
+  const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.json'; document.head.appendChild(l);
+}
 
 // Startbildschirm: aufsteigende Herzen, Tippen zum Starten
 const cover = document.getElementById('cover');
@@ -327,6 +346,7 @@ async function load(){
          </div>
          <div class="shine"></div>
          <div class="bar"><i style="--p:${((i + 1) / photos.length * 100).toFixed(1)}%"></i></div>
+         ${p.favorite ? `<div class="fav">★ ${esc(FAVORITE_LABEL)}</div>` : ''}
          ${badge ? `<div class="badge">${badge}</div>` : ''}
          <div class="count"><b>♥</b> ${i + 1} / ${photos.length}</div>
          <div class="meta">
