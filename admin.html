@@ -38,25 +38,26 @@
 </style>
 </head>
 <body>
-<h1>Bilder verwalten</h1>
-<p class="muted">Nur für dich. Diese Seite nicht weitergeben. <a href="./">Zur Slideshow</a></p>
+<h1>Fotos hinzufügen &amp; bearbeiten</h1>
+<p class="muted"><a href="./">Zur Slideshow</a></p>
 
 <section>
   <h2>Foto aufnehmen</h2>
-  <p class="muted">Öffnet die Kamera, das Foto wird sofort hochgeladen. Braucht den gespeicherten Token (unten).</p>
+  <p class="muted">Öffnet die Kamera, das Foto wird sofort hochgeladen.</p>
   <label class="camera" for="cam">📷 Foto aufnehmen</label>
   <input id="cam" type="file" accept="image/*" capture="environment" hidden>
   <pre id="camlog"></pre>
 </section>
 
 <section>
-  <h2>Ohne Token: direkt bei GitHub hochladen</h2>
-  <p class="muted">Fotos auf <a id="ghUpload" href="#">dieser GitHub-Seite</a> auswählen und unten „Commit changes" tippen. Datum, Verkleinern und Hochformat passieren danach automatisch, nach 2–3 Minuten sind die Bilder in der Slideshow. Den Token brauchst du nur für „Bearbeiten" weiter unten.</p>
+  <h2>Alternativ: über GitHub hochladen</h2>
+  <p class="muted">Mit GitHub-Login auf <a id="ghUpload" href="#">dieser Seite</a> Fotos auswählen und „Commit changes" tippen. Datum, Verkleinern und Hochformat passieren automatisch, nach 2–3 Minuten sind die Bilder da.</p>
 </section>
 
 <section>
-  <h2>Zugang (nur fürs Bearbeiten)</h2>
-  <label>GitHub-Token (Fine-grained, Contents: Read &amp; write)</label>
+  <h2>Zugang</h2>
+  <p class="muted">Einmal eintragen, bleibt auf diesem Handy gespeichert.</p>
+  <label>Zugangsschlüssel (GitHub-Token)</label>
   <input id="token" type="password" placeholder="github_pat_…" autocomplete="off">
   <label>Owner / Repo</label>
   <div class="row">
@@ -64,7 +65,9 @@
     <input id="repo" type="text" autocapitalize="off" autocorrect="off" placeholder="repo">
   </div>
   <button id="save">Speichern &amp; prüfen</button>
+  <button id="share" class="secondary">Zugangslink für ein zweites Handy kopieren</button>
   <div class="status" id="status"></div>
+  <input id="shareLink" type="text" readonly hidden style="margin-top:8px">
 </section>
 
 <section>
@@ -96,6 +99,11 @@ const isoLocal = d => `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate()
 const host = location.hostname, segs = location.pathname.split('/').filter(Boolean);
 const onPages = host.endsWith('.github.io');
 const saved = JSON.parse(localStorage.getItem('kochbuch_cfg') || '{}');
+// Zugangslink: admin.html#key=... -> Schlüssel speichern und aus der Adresse entfernen
+try{
+  const m = location.hash.match(/key=([^&]+)/);
+  if (m){ saved.token = decodeURIComponent(m[1]); localStorage.setItem('kochbuch_cfg', JSON.stringify(saved)); history.replaceState(null, '', location.pathname); }
+}catch(e){}
 $('token').value = saved.token || '';
 // Auf der Pages-Adresse gewinnt immer die Adresse (auch nach einer Umbenennung des Repos)
 $('owner').value = onPages ? host.split('.')[0] : (saved.owner || '');
@@ -103,6 +111,15 @@ $('repo').value  = onPages && segs.length && !segs[0].endsWith('.html') ? segs[0
 const cfg = () => ({token: $('token').value.trim(), owner: $('owner').value.trim(), repo: $('repo').value.trim()});
 { const c = cfg(); if (c.owner && c.repo) $('ghUpload').href = `https://github.com/${c.owner}/${c.repo}/upload/main/photos`; }
 const repoPath = () => { const c = cfg(); return `/repos/${c.owner}/${c.repo}`; };
+
+$('share').onclick = async () => {
+  const c = cfg();
+  if (!c.token) return setStatus('Erst den Schlüssel eintragen und speichern.', false);
+  const link = `${location.origin}${location.pathname}#key=${encodeURIComponent(c.token)}`;
+  try{ await navigator.clipboard.writeText(link); setStatus('✓ Link kopiert. Per Nachricht schicken, einmal antippen, fertig.', true); }
+  catch(e){ setStatus('Link markieren und kopieren:', true); }
+  $('shareLink').hidden = false; $('shareLink').value = link;
+};
 
 async function api(method, path, body){
   const c = cfg();
