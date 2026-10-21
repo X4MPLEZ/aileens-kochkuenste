@@ -169,7 +169,7 @@ const soundOn = () => { try{ return localStorage.getItem('kochbuch_sound') !== '
 function audioInit(){
   if (actx) return;
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-  actx = new AC(); master = actx.createGain(); master.gain.value = .7; master.connect(actx.destination);
+  actx = new AC(); master = actx.createGain(); master.gain.value = .5; master.connect(actx.destination);
 }
 function ensure(){ if (!soundOn()) return false; audioInit(); if (!actx) return false; if (actx.state === 'suspended') actx.resume(); return true; }
 function env(node, t0, a, d, peak){
@@ -187,29 +187,34 @@ function tone(freq, t, a, d, peak, type = 'sine', detune = 0){
 }
 function whoosh(dir = 1, strength = 1){
   if (!ensure()) return;
-  const t = actx.currentTime, src = noise(), f = actx.createBiquadFilter();
-  f.type = 'bandpass'; f.Q.value = 1.1; f.frequency.setValueAtTime(420, t); f.frequency.exponentialRampToValueAtTime(1900, t + .18);
-  src.connect(f); let out = f;
-  if (actx.createStereoPanner){ const pn = actx.createStereoPanner(); pn.pan.setValueAtTime(-.55 * dir, t); pn.pan.linearRampToValueAtTime(.55 * dir, t + .22); f.connect(pn); out = pn; }
-  env(out, t, .025, .22, .07 * strength); src.start(t); src.stop(t + .35);
+  const t = actx.currentTime, dur = .85;
+  // Breitbandrauschen, tief gefiltert, das langsam anschwillt, sich kurz öffnet und wieder verweht
+  const src = noise(), lp = actx.createBiquadFilter(), hp = actx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.Q.value = .6;
+  lp.frequency.setValueAtTime(220, t); lp.frequency.exponentialRampToValueAtTime(1400, t + .28); lp.frequency.exponentialRampToValueAtTime(260, t + dur);
+  hp.type = 'highpass'; hp.frequency.value = 120;
+  src.connect(hp); hp.connect(lp); let out = lp;
+  if (actx.createStereoPanner){ const pn = actx.createStereoPanner(); pn.pan.setValueAtTime(-.6 * dir, t); pn.pan.linearRampToValueAtTime(.6 * dir, t + dur * .8); lp.connect(pn); out = pn; }
+  const g = actx.createGain();
+  g.gain.setValueAtTime(.0001, t);
+  g.gain.exponentialRampToValueAtTime(.022 * strength, t + .16);
+  g.gain.setValueAtTime(.022 * strength, t + .3);
+  g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  out.connect(g); g.connect(master);
+  src.start(t); src.stop(t + dur + .05);
 }
-function snap(){
-  if (!ensure()) return;
-  const t = actx.currentTime, o = actx.createOscillator();
-  o.type = 'triangle'; o.frequency.setValueAtTime(600, t); o.frequency.exponentialRampToValueAtTime(390, t + .07);
-  env(o, t, .004, .1, .04); o.start(t); o.stop(t + .16);
-}
+function snap(){}
 function chime(){
   if (!ensure()) return;
-  const t = actx.currentTime, f = [1046.5, 1318.5, 1568, 2093][Math.random() * 4 | 0];
-  tone(f, t, .008, .55, .045); tone(f * 2.01, t, .008, .3, .012); tone(f * 1.5, t + .03, .01, .4, .02);
+  const t = actx.currentTime, f = [523.25, 587.33, 659.25, 783.99][Math.random() * 4 | 0];
+  tone(f, t, .06, 1.4, .016); tone(f * 2, t, .08, .9, .004); tone(f * 1.5, t + .12, .08, 1.1, .007);
 }
 function openSound(){
   if (!ensure()) return;
   const t = actx.currentTime;
-  [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { tone(f, t + i * .075, .02, .9, .04); tone(f * 2, t + i * .075, .02, .45, .01); });
+  [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { tone(f, t + i * .09, .05, 1.2, .018); tone(f * 2, t + i * .09, .05, .6, .004); });
 }
-function tick(){ if (!ensure()) return; tone(1300, actx.currentTime, .003, .045, .02); }
+function uiTick(){ if (!ensure()) return; tone(1300, actx.currentTime, .003, .045, .012); }
 
 // Ton-Schalter oben links
 const soundBtn = document.getElementById('soundBtn');
@@ -382,6 +387,22 @@ document.addEventListener('touchcancel', release, {passive: true});
 document.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' && e.buttons) trail(e.clientX, e.clientY); });
 document.addEventListener('pointerup', e => { if (e.pointerType === 'mouse') release(); });
 
+// Kamera-Knopf öffnet den Editor als Overlay (kein Seitenwechsel)
+const panel = document.getElementById('adminPanel');
+function openAdmin(){
+  const f = document.createElement('iframe'); f.id = 'adminFrame'; f.src = 'admin.html';
+  panel.appendChild(f); panel.hidden = false;
+}
+function closeAdmin(){
+  panel.hidden = true;
+  const f = document.getElementById('adminFrame'); if (f) f.remove();
+  load();
+  [45, 100, 170].forEach(sec => setTimeout(load, sec * 1000)); // neue Bilder nachladen, sobald die Seite neu gebaut ist
+}
+document.getElementById('adminLink').addEventListener('click', e => { e.preventDefault(); openAdmin(); });
+document.getElementById('closeAdmin').addEventListener('click', closeAdmin);
+window.addEventListener('message', e => { if (e.data === 'kochbuch-close') closeAdmin(); });
+
 function badgeFor(d){
   const t = new Date();
   if (d.getDate() !== t.getDate() || d.getMonth() !== t.getMonth()) return '';
@@ -475,9 +496,9 @@ async function load(){
     .scrollIntoView({behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest'});
   const current = () => slides.findIndex(s => s.classList.contains('active'));
 
-  document.getElementById('first').onclick  = () => { tick(); go(0); };
-  document.getElementById('last').onclick   = () => { tick(); go(slides.length - 1); };
-  document.getElementById('random').onclick = () => { tick(); whoosh(1, .8); let r; do { r = Math.floor(Math.random() * slides.length); } while (slides.length > 1 && r === current()); go(r); };
+  document.getElementById('first').onclick  = () => { uiTick(); go(0); };
+  document.getElementById('last').onclick   = () => { uiTick(); go(slides.length - 1); };
+  document.getElementById('random').onclick = () => { uiTick(); whoosh(1, .8); let r; do { r = Math.floor(Math.random() * slides.length); } while (slides.length > 1 && r === current()); go(r); };
   document.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight') go(current() + 1);
     if (e.key === 'ArrowLeft')  go(current() - 1);
