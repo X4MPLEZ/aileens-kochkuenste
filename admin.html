@@ -68,6 +68,7 @@
   </div>
   <button id="save">Speichern &amp; prüfen</button>
   <button id="share" class="secondary">Zugangslink für ein zweites Handy kopieren</button>
+  <p class="muted" style="margin-top:6px">Der Link öffnet die Slideshow und richtet den Zugang auf dem anderen Handy ein. Von dort aus „Zum Home-Bildschirm" hinzufügen.</p>
   <div class="status" id="status"></div>
   <input id="shareLink" type="text" readonly hidden style="margin-top:8px">
 </section>
@@ -117,7 +118,7 @@ const repoPath = () => { const c = cfg(); return `/repos/${c.owner}/${c.repo}`; 
 $('share').onclick = async () => {
   const c = cfg();
   if (!c.token) return setStatus('Erst den Schlüssel eintragen und speichern.', false);
-  const link = `${location.origin}${location.pathname}#key=${encodeURIComponent(c.token)}`;
+  const link = `${location.origin}${location.pathname.replace(/admin\.html$/, '')}#key=${encodeURIComponent(c.token)}`;
   try{ await navigator.clipboard.writeText(link); setStatus('✓ Link kopiert. Per Nachricht schicken, einmal antippen, fertig.', true); }
   catch(e){ setStatus('Link markieren und kopieren:', true); }
   $('shareLink').hidden = false; $('shareLink').value = link;
