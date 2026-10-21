@@ -28,7 +28,8 @@
   .bokeh i:nth-child(5){width:90px;height:90px;left:12%;top:40%;background:#f7cbd9;animation-duration:28s;animation-delay:-20s}
   @keyframes drift{0%{transform:translate(0,0) scale(1)}33%{transform:translate(24px,-30px) scale(1.08)}66%{transform:translate(-18px,18px) scale(.95)}100%{transform:translate(0,0) scale(1)}}
 
-  header{position:relative;z-index:1;padding:calc(env(safe-area-inset-top) + 14px) 20px 6px;text-align:center}
+  header{position:relative;z-index:1;padding:calc(env(safe-area-inset-top) + 14px) 56px 6px;text-align:center}
+  .admin{position:absolute;right:16px;top:calc(env(safe-area-inset-top) + 14px);width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.7);border:1px solid var(--rose-soft);display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:17px;box-shadow:0 4px 14px rgba(120,50,80,.08)}
   header h1{font-family:"Cormorant Garamond",Georgia,serif;font-weight:600;font-style:italic;font-size:30px;line-height:1.05;letter-spacing:.3px;color:var(--ink)}
   header h1 .heart{color:var(--rose);font-style:normal;font-size:22px;vertical-align:4px;margin-left:4px;display:inline-block;animation:beat 2.2s ease-in-out infinite}
   header p{color:var(--muted);font-size:13px;margin-top:3px;letter-spacing:.4px}
@@ -55,14 +56,14 @@
   .caption{margin-top:6px;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:23px;line-height:1.15;text-shadow:0 1px 8px rgba(0,0,0,.35)}
   .desc{margin-top:5px;font-size:13.5px;line-height:1.35;opacity:.9;text-shadow:0 1px 6px rgba(0,0,0,.35)}
   .fh{position:fixed;z-index:20;pointer-events:none;color:var(--rose);font-size:22px;text-shadow:0 2px 8px rgba(196,96,122,.4)}
+  #fx{position:fixed;inset:0;z-index:6;pointer-events:none}
 
-  footer{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:8px;padding:2px 20px calc(env(safe-area-inset-bottom) + 12px)}
-  .count{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;letter-spacing:.5px}
-  .count b{color:var(--rose);font-weight:600}
+  footer{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;padding:4px 20px calc(env(safe-area-inset-bottom) + 14px)}
   .buttons{display:flex;gap:10px}
+  .count{position:absolute;top:22px;right:14px;z-index:3;background:rgba(255,255,255,.85);color:var(--ink);font-size:11px;letter-spacing:1px;font-weight:600;padding:5px 10px;border-radius:999px;backdrop-filter:blur(6px);font-variant-numeric:tabular-nums}
+  .count b{color:var(--rose)}
   button{background:rgba(255,255,255,.7);color:var(--ink);border:1px solid var(--rose-soft);border-radius:999px;padding:9px 18px;font:inherit;font-size:14px;cursor:pointer;backdrop-filter:blur(6px);box-shadow:0 4px 14px rgba(120,50,80,.08)}
   button:active{transform:scale(.96)}
-  .admin{color:var(--muted);font-size:12px;text-decoration:none;border:1px solid rgba(196,96,122,.25);border-radius:999px;padding:5px 12px}
   .empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px;line-height:1.5;font-family:"Cormorant Garamond",Georgia,serif;font-size:22px;font-style:italic}
 
   /* Wisch-Hinweis beim ersten Öffnen */
@@ -99,17 +100,16 @@
   </div>
 </div>
 
-<header><h1><span id="title"></span><span class="heart">♥</span></h1><p id="subtitle"></p></header>
+<header><h1><span id="title"></span><span class="heart">♥</span></h1><p id="subtitle"></p><a class="admin" id="adminLink" href="admin.html" title="Foto hinzufügen">📷</a></header>
+<canvas id="fx"></canvas>
 <div class="track" id="track"></div>
 <div class="hint" id="hint"><span class="hand">👈</span><span>Nach links wischen</span></div>
 <footer>
-  <span class="count" id="count"></span>
   <div class="buttons" id="buttons">
     <button id="first">Anfang</button>
     <button id="random">✨ Zufall</button>
     <button id="last">Neueste</button>
   </div>
-  <a class="admin" id="adminLink" href="admin.html">📷 Foto hinzufügen</a>
 </footer>
 
 <script>
@@ -155,7 +155,7 @@ function layout(p, W, H){
 }
 function sizeFrames(){
   const availH = track.clientHeight - 20, availW = track.clientWidth - 40;
-  const H = Math.max(200, Math.min(availH, availW / FRAME_RATIO)), W = H * FRAME_RATIO;
+  const H = Math.max(200, Math.min(availH * .96, availW / FRAME_RATIO)), W = H * FRAME_RATIO;
   document.documentElement.style.setProperty('--fw', W + 'px');
   document.documentElement.style.setProperty('--fh', H + 'px');
   return {W: W - 10, H: H - 10}; // abzüglich Rahmenrand
@@ -224,6 +224,52 @@ track.addEventListener('pointerup', e => {
   }
 });
 
+// Funkelnde Partikel entlang des Fingers beim Wischen
+const fx = document.getElementById('fx'), ctx = fx.getContext('2d');
+const dpr = Math.min(2, window.devicePixelRatio || 1);
+let parts = [], raf = null, lastTouch = null;
+function resizeFx(){ fx.width = innerWidth * dpr; fx.height = innerHeight * dpr; fx.style.width = innerWidth + 'px'; fx.style.height = innerHeight + 'px'; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+resizeFx(); window.addEventListener('resize', resizeFx);
+const colors = ['#ffffff', '#ffd6e0', '#f6b8c8', '#f9dcc4', '#e8b26a', '#ffffff'];
+function emit(x, y, vx, vy){
+  for (let i = 0; i < 3; i++){
+    parts.push({x: x + (Math.random() - .5) * 10, y: y + (Math.random() - .5) * 10,
+      vx: (Math.random() - .5) * 1.4 - vx * .12, vy: (Math.random() - .5) * 1.4 - vy * .12 - .5,
+      life: 1, decay: .014 + Math.random() * .02, r: 1.5 + Math.random() * 3,
+      c: colors[Math.random() * colors.length | 0], star: Math.random() < .2, rot: Math.random() * Math.PI});
+  }
+  if (parts.length > 240) parts.splice(0, parts.length - 240);
+  if (!raf) raf = requestAnimationFrame(tick);
+}
+function star(x, y, r, rot){
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++){ const a = rot + i * Math.PI / 4, rr = i % 2 ? r * .38 : r; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+  ctx.closePath(); ctx.fill();
+}
+function tick(){
+  ctx.clearRect(0, 0, innerWidth, innerHeight);
+  for (const p of parts){ p.x += p.vx; p.y += p.vy; p.vy -= .012; p.life -= p.decay; }
+  parts = parts.filter(p => p.life > 0);
+  for (const p of parts){
+    ctx.fillStyle = p.c;
+    ctx.globalAlpha = p.life * .35;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 2.2 * p.life + .5, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = Math.min(1, p.life * 1.2);
+    if (p.star) star(p.x, p.y, p.r * 2 * p.life + .8, p.rot);
+    else { ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life + .3, 0, Math.PI * 2); ctx.fill(); }
+  }
+  ctx.globalAlpha = 1;
+  raf = parts.length ? requestAnimationFrame(tick) : null;
+}
+track.addEventListener('touchmove', e => {
+  const t = e.touches[0]; if (!t) return;
+  const vx = lastTouch ? t.clientX - lastTouch.x : 0, vy = lastTouch ? t.clientY - lastTouch.y : 0;
+  lastTouch = {x: t.clientX, y: t.clientY};
+  emit(t.clientX, t.clientY, vx, vy);
+}, {passive: true});
+track.addEventListener('touchend', () => { lastTouch = null; }, {passive: true});
+track.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' && e.buttons) emit(e.clientX, e.clientY, e.movementX, e.movementY); });
+
 function badgeFor(d){
   const t = new Date();
   if (d.getDate() !== t.getDate() || d.getMonth() !== t.getMonth()) return '';
@@ -269,6 +315,7 @@ async function load(){
          <div class="shine"></div>
          <div class="bar"><i style="--p:${((i + 1) / photos.length * 100).toFixed(1)}%"></i></div>
          ${badge ? `<div class="badge">${badge}</div>` : ''}
+         <div class="count"><b>♥</b> ${i + 1} / ${photos.length}</div>
          <div class="meta">
            <div class="date">${fmtDate.format(d)}${showTime ? ` <span class="time">· ${fmtTime.format(d)} Uhr</span>` : ''}</div>
            ${title ? `<div class="caption">${esc(title)}</div>` : ''}
@@ -286,12 +333,10 @@ async function load(){
   slides = [...track.children];
   applyLayouts();
 
-  const count = document.getElementById('count');
   const io = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (e.isIntersecting){
         e.target.classList.add('active');
-        count.innerHTML = `<b>♥</b> ${+e.target.dataset.i + 1} / ${slides.length}`;
       } else {
         e.target.classList.remove('active');
       }
